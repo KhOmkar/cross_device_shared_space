@@ -16,7 +16,8 @@ local.properties
 *.so
 *.a
 *.rlib
-shared_space/ai-agent-handoff-brief.md
+
+ai-agent-handoff-brief.md
 # Log files and crash dumps
 *.log
 crashpad_handler/
