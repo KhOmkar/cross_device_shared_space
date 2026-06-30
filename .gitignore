@@ -1,0 +1,22 @@
+# Rust build artifacts
+target/
+
+# Local databases containing private encryption keys and synced content
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Android build outputs and local configuration
+.gradle/
+build/
+local.properties
+*.apk
+*.aar
+*.so
+*.a
+*.rlib
+shared_space/ai-agent-handoff-brief.md
+# Log files and crash dumps
+*.log
+crashpad_handler/
