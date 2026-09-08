@@ -181,17 +181,27 @@ class WebSocketTransferChannel(
         AppLogger.i("WebSocketChannel", "Cancelling transfer $transferId")
         storageManager.cancelTransfer(transferId)
         ChunkStreamer.cancel(transferId)
-        activeWsHandler?.sendText("{\"type\":\"cancel\",\"transferId\":\"$transferId\",\"reason\":\"Cancelled by phone\"}")
+        scope.launch(Dispatchers.IO) {
+            try {
+                activeWsHandler?.sendText("{\"type\":\"cancel\",\"transferId\":\"$transferId\",\"reason\":\"Cancelled by phone\"}")
+            } catch (e: Exception) {
+                AppLogger.e("WebSocketChannel", "Error sending cancel frame: ${e.message}")
+            }
+        }
     }
 
     override suspend fun cancel() {
-        activeWsHandler?.sendText("{\"type\":\"cancel\",\"reason\":\"user_cancelled\"}")
+        try {
+            activeWsHandler?.sendText("{\"type\":\"cancel\",\"reason\":\"user_cancelled\"}")
+        } catch (_: Exception) {}
         storageManager.clearAll()
     }
 
     override suspend fun close() {
         messageLoopJob?.cancel()
-        activeWsHandler?.close(1000, "Session Ended")
+        try {
+            activeWsHandler?.close(1000, "Session Ended")
+        } catch (_: Exception) {}
         activeWsHandler = null
         activeSessionKey = null
         storageManager.clearAll()

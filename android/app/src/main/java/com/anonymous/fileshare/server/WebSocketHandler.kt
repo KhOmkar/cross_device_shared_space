@@ -197,31 +197,37 @@ class WebSocketHandler(
     }
 
     private fun writeFrame(opcode: Int, payload: ByteArray) {
-        val len = payload.size
-        // FIN bit set (0x80) + opcode
-        bufferedOut.write(0x80 or (opcode and 0x0F))
+        if (isClosed || socket.isClosed) return
+        try {
+            val len = payload.size
+            // FIN bit set (0x80) + opcode
+            bufferedOut.write(0x80 or (opcode and 0x0F))
 
-        // Server-to-client frames are unmasked (mask bit = 0)
-        when {
-            len <= 125 -> {
-                bufferedOut.write(len)
-            }
-            len <= 65535 -> {
-                bufferedOut.write(126)
-                bufferedOut.write((len shr 8) and 0xFF)
-                bufferedOut.write(len and 0xFF)
-            }
-            else -> {
-                bufferedOut.write(127)
-                for (i in 7 downTo 0) {
-                    bufferedOut.write(((len.toLong() shr (i * 8)) and 0xFF).toInt())
+            // Server-to-client frames are unmasked (mask bit = 0)
+            when {
+                len <= 125 -> {
+                    bufferedOut.write(len)
+                }
+                len <= 65535 -> {
+                    bufferedOut.write(126)
+                    bufferedOut.write((len shr 8) and 0xFF)
+                    bufferedOut.write(len and 0xFF)
+                }
+                else -> {
+                    bufferedOut.write(127)
+                    for (i in 7 downTo 0) {
+                        bufferedOut.write(((len.toLong() shr (i * 8)) and 0xFF).toInt())
+                    }
                 }
             }
-        }
 
-        if (len > 0) {
-            bufferedOut.write(payload)
+            if (len > 0) {
+                bufferedOut.write(payload)
+            }
+            bufferedOut.flush()
+        } catch (e: Exception) {
+            AppLogger.e("WebSocketHandler", "writeFrame error: ${e.message}")
+            isClosed = true
         }
-        bufferedOut.flush()
     }
 }

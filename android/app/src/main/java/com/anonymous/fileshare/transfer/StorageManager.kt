@@ -107,7 +107,10 @@ class StorageManager(
      */
     @Synchronized
     fun appendChunk(transferId: String, chunkBytes: ByteArray) {
-        val session = activeSessions[transferId] ?: throw IllegalStateException("Session $transferId not found")
+        val session = activeSessions[transferId] ?: run {
+            AppLogger.w("StorageManager", "Ignoring chunk for missing or cancelled session $transferId")
+            return
+        }
 
         session.hasher.update(chunkBytes)
         session.memoryBuffer.write(chunkBytes)
@@ -117,7 +120,7 @@ class StorageManager(
         if (session.bytesWritten > session.expectedSize) {
             AppLogger.e("StorageManager", "File size exceeded stated metadata size: ${session.bytesWritten} > ${session.expectedSize}")
             cancelTransfer(transferId)
-            throw IllegalStateException("File size exceeded stated metadata size")
+            return
         }
 
         // Flush memory buffer in 4MB chunks to minimize disk IO overhead
@@ -154,7 +157,7 @@ class StorageManager(
 
             // Save to Downloads folder via MediaStore / Storage Access Framework
             saveToDownloads(session.tempFile, session.originalFilename)
-            AppLogger.i("StorageManager", "✓ Successfully saved ${session.originalFilename}")
+            AppLogger.i("StorageManager", "Successfully saved ${session.originalFilename}")
             return session.tempFile
         } catch (e: Exception) {
             AppLogger.e("StorageManager", "Failed to finalize ${session.originalFilename}: ${e.message}", e)

@@ -176,7 +176,13 @@ class TransferStateViewModel(application: Application) : AndroidViewModel(applic
 
     fun cancelTransfer(transferId: String) {
         val service = boundService ?: return
-        service.transferChannel?.cancelTransfer(transferId)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                service.transferChannel?.cancelTransfer(transferId)
+            } catch (e: Exception) {
+                com.anonymous.fileshare.util.AppLogger.e("ViewModel", "Cancel error: ${e.message}")
+            }
+        }
         _uiState.update { state ->
             state.copy(
                 activeTransfers = state.activeTransfers.map {

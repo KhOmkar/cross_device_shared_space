@@ -380,7 +380,7 @@ fun MainScreen(
                 }
             }
 
-            // Live Debug Logs Section
+            // Live System Logs Section
             item {
                 var showLogs by remember { mutableStateOf(false) }
                 val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
@@ -395,11 +395,20 @@ fun MainScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                "📋 Live System Logs (${logs.size})",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "Live System Logs (${logs.size})",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                             Row {
                                 if (logs.isNotEmpty()) {
                                     TextButton(onClick = {
@@ -443,9 +452,9 @@ fun MainScreen(
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontFamily = FontFamily.Monospace,
                                                 color = when {
-                                                    logLine.contains("ERROR") || logLine.contains("❌") -> Color(0xFFEF4444)
-                                                    logLine.contains("WARN") || logLine.contains("⚠️") -> Color(0xFFF59E0B)
-                                                    logLine.contains("✓") -> Color(0xFF10B981)
+                                                    logLine.contains("ERROR") -> Color(0xFFEF4444)
+                                                    logLine.contains("WARN") -> Color(0xFFF59E0B)
+                                                    logLine.contains("Saved") || logLine.contains("Verified") || logLine.contains("Success") -> Color(0xFF10B981)
                                                     else -> Color(0xFF94A3B8)
                                                 },
                                                 modifier = Modifier.padding(vertical = 2.dp)
@@ -531,9 +540,9 @@ fun TransferItemRow(
             ) {
                 Text(
                     when (transfer.status) {
-                        TransferStatus.COMPLETED -> "✓ Verified SHA-256"
-                        TransferStatus.FAILED -> "✗ Failed: ${transfer.errorMessage ?: "Error"}"
-                        TransferStatus.CANCELLED -> "✗ Cancelled"
+                        TransferStatus.COMPLETED -> "Verified SHA-256"
+                        TransferStatus.FAILED -> "Failed: ${transfer.errorMessage ?: "Error"}"
+                        TransferStatus.CANCELLED -> "Cancelled"
                         TransferStatus.TRANSFERRING -> "AES-256 Encrypted Transfer"
                     },
                     style = MaterialTheme.typography.labelSmall,

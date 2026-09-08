@@ -1,4 +1,4 @@
-﻿package com.anonymous.fileshare.util
+package com.anonymous.fileshare.util
 
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,13 +32,13 @@ object AppLogger {
 
     fun w(tag: String, msg: String) {
         Log.w(TAG, "[$tag] $msg")
-        appendLog("[$tag] ⚠️ WARN: $msg")
+        appendLog("[$tag] WARN: $msg")
     }
 
     fun e(tag: String, msg: String, tr: Throwable? = null) {
         Log.e(TAG, "[$tag] ERROR: $msg", tr)
         val errStr = if (tr != null) "$msg (${tr.javaClass.simpleName}: ${tr.message})" else msg
-        appendLog("[$tag] ❌ ERROR: $errStr")
+        appendLog("[$tag] ERROR: $errStr")
     }
 
     private fun appendLog(line: String) {
