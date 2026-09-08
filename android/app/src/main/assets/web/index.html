@@ -496,6 +496,71 @@
       border-top: 1px solid var(--border-color);
       margin-top: 1rem;
     }
+
+    /* Modal styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(4, 6, 10, 0.82);
+      backdrop-filter: blur(8px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      padding: 1.25rem;
+    }
+
+    .modal-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85), 0 0 24px rgba(56, 189, 248, 0.12);
+      animation: modalFadeIn 0.2s ease-out;
+    }
+
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.96); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .modal-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .modal-body {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    .modal-tip-box {
+      background: rgba(8, 11, 17, 0.85);
+      border: 1px solid rgba(246, 196, 83, 0.3);
+      border-radius: var(--radius-sm);
+      padding: 0.85rem 1rem;
+      color: var(--text-primary);
+    }
   </style>
 </head>
 <body>
@@ -650,6 +715,49 @@
       </div>
       <div id="debug-log-console" style="margin-top: 0.75rem; max-height: 180px; overflow-y: auto; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.75rem; font-family: monospace; font-size: 0.75rem; color: #94a3b8; line-height: 1.4; display: flex; flex-direction: column; gap: 0.25rem;">
         <div>System initialized. Ready for connection.</div>
+      </div>
+    </div>
+
+    <!-- Download Location & Auto-Save Help Modal -->
+    <div id="modal-download-settings" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-geo);">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" fill="rgba(246, 196, 83, 0.15)" stroke="var(--accent-geo)"/>
+            </svg>
+            <span>Download Location & Auto-Save</span>
+          </div>
+          <button id="btn-close-modal" class="btn-icon" style="color: var(--text-secondary);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div>
+            <strong>Where are received files saved?</strong><br>
+            All files sent from your phone are securely saved directly into your PC's <strong>Downloads</strong> folder.
+          </div>
+
+          <div class="modal-tip-box">
+            <strong style="color: var(--accent-geo);">How to stop the browser asking for each file:</strong>
+            <ol style="margin: 0.5rem 0 0 1.2rem; padding: 0;">
+              <li>In Chrome or Edge, open <strong>Settings</strong> &rarr; <strong>Downloads</strong>.</li>
+              <li>Turn <strong>OFF</strong> the toggle: <em>"Ask where to save each file before downloading"</em>.</li>
+              <li>All incoming files will now save instantly without prompting each time.</li>
+            </ol>
+          </div>
+
+          <div style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.45;">
+            <em>Note on local Wi-Fi:</em> Standard browser security rules (W3C standard) require HTTPS to allow web pages to pick custom disk folders directly. On local hotspot HTTP addresses (<code>10.x.x.x</code>), downloads are managed seamlessly through your browser's Download manager.
+          </div>
+        </div>
+
+        <div style="margin-top: 1.25rem; display: flex; justify-content: flex-end;">
+          <button id="btn-modal-ok" class="btn" style="padding: 0.5rem 1.25rem; font-size: 0.85rem;">
+            Got it
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1296,6 +1404,9 @@
       const localAliasEl = document.getElementById('local-alias');
       const saveFolderDisplay = document.getElementById('save-folder-display');
       const btnChooseFolder = document.getElementById('btn-choose-folder');
+      const modalDownloadSettings = document.getElementById('modal-download-settings');
+      const btnCloseModal = document.getElementById('btn-close-modal');
+      const btnModalOk = document.getElementById('btn-modal-ok');
       const debugLogConsole = document.getElementById('debug-log-console');
       const logCountEl = document.getElementById('log-count');
       const btnToggleLogs = document.getElementById('btn-toggle-logs');
@@ -1307,9 +1418,37 @@
         safeSetText(localAliasEl, detectClientAlias());
       }
 
+      const hasNativeDirectoryPicker = window.isSecureContext && typeof window.showDirectoryPicker === 'function';
+
+      if (saveFolderDisplay && btnChooseFolder) {
+        if (hasNativeDirectoryPicker) {
+          safeSetText(saveFolderDisplay, 'Downloads (Browser Default)');
+          safeSetText(btnChooseFolder, 'Choose Folder');
+        } else {
+          safeSetText(saveFolderDisplay, 'PC Downloads (Auto-Save)');
+          safeSetText(btnChooseFolder, 'How to Auto-Save');
+        }
+      }
+
+      function showDownloadSettingsModal() {
+        if (modalDownloadSettings) modalDownloadSettings.classList.remove('hidden');
+      }
+
+      function hideDownloadSettingsModal() {
+        if (modalDownloadSettings) modalDownloadSettings.classList.add('hidden');
+      }
+
+      if (btnCloseModal) btnCloseModal.addEventListener('click', hideDownloadSettingsModal);
+      if (btnModalOk) btnModalOk.addEventListener('click', hideDownloadSettingsModal);
+      if (modalDownloadSettings) {
+        modalDownloadSettings.addEventListener('click', (e) => {
+          if (e.target === modalDownloadSettings) hideDownloadSettingsModal();
+        });
+      }
+
       if (btnChooseFolder) {
         btnChooseFolder.addEventListener('click', async () => {
-          if ('showDirectoryPicker' in window) {
+          if (hasNativeDirectoryPicker) {
             try {
               customSaveDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
               if (saveFolderDisplay && customSaveDirHandle) {
@@ -1322,7 +1461,7 @@
               }
             }
           } else {
-            alert('Custom download folder selection is supported in Chrome, Edge, Brave, and Opera. Your browser will save received files to the default Downloads directory.');
+            showDownloadSettingsModal();
           }
         });
       }
@@ -1504,8 +1643,16 @@
         speedEta.className = 'speed-eta';
         safeSetText(speedEta, '0 KB/s');
 
+        const saveAgainBtn = document.createElement('button');
+        saveAgainBtn.className = 'btn btn-secondary hidden';
+        saveAgainBtn.style.fontSize = '0.72rem';
+        saveAgainBtn.style.padding = '0.2rem 0.6rem';
+        saveAgainBtn.style.marginLeft = 'auto';
+        safeSetText(saveAgainBtn, 'Save Again');
+
         footer.appendChild(statusLabel);
         footer.appendChild(speedEta);
+        footer.appendChild(saveAgainBtn);
 
         item.appendChild(header);
         item.appendChild(barContainer);
@@ -1519,6 +1666,7 @@
           statusLabel,
           speedEta,
           cancelBtn,
+          saveAgainBtn,
           startTime: Date.now(),
           lastBytes: 0,
           lastTime: Date.now()
@@ -1543,13 +1691,24 @@
         }
       }
 
-      function completeTransferUI(ui, success, message) {
+      function completeTransferUI(ui, success, message, blobUrl, filename) {
         ui.bar.style.width = '100%';
         if (ui.cancelBtn) ui.cancelBtn.classList.add('hidden');
         if (success) {
           ui.bar.classList.add('success');
           safeSetText(ui.statusLabel, message || 'Verified & Complete');
           safeSetText(ui.speedEta, 'SHA-256 Validated');
+          if (blobUrl && filename && ui.saveAgainBtn) {
+            ui.saveAgainBtn.classList.remove('hidden');
+            ui.saveAgainBtn.onclick = () => {
+              const a = document.createElement('a');
+              a.href = blobUrl;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+            };
+          }
         } else {
           ui.bar.classList.add('error');
           safeSetText(ui.statusLabel, message || 'Transfer Failed');
@@ -1833,20 +1992,20 @@
             }
           }
 
+          let downloadBlobUrl = null;
           if (!savedToCustom) {
             const blob = new Blob(transfer.chunks, { type: 'application/octet-stream' });
-            const url = URL.createObjectURL(blob);
+            downloadBlobUrl = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url;
+            a.href = downloadBlobUrl;
             a.download = transfer.meta.filename;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 10000);
             AppLog('RECV', `Verified & downloaded: ${transfer.meta.filename}`, 'success');
           }
 
-          completeTransferUI(transfer.ui, true, 'Downloaded & Verified');
+          completeTransferUI(transfer.ui, true, 'Downloaded & Verified', downloadBlobUrl, transfer.meta.filename);
 
           // Send ACK
           sessionState.ws.send(JSON.stringify({
