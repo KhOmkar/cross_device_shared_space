@@ -99,6 +99,15 @@ In addition to Wi-Fi link-layer WPA2/WPA3 security, all file chunks are encrypte
 
 ---
 
+## Features & Diagnostics
+
+- **Bidirectional File Transfers**: Instant, high-speed transfer between Android and any desktop or laptop browser.
+- **Upload Queue & Flow Control**: Multi-file sequential queue with backpressure drain handling on both ends.
+- **RFC 6455 Frame Reassembly**: Transparent continuation frame buffering for large payloads and varying network MTUs.
+- **Live Diagnostics Console**: Real-time on-screen event logging in both the Android app and Web client with a 1-click **"Copy Logs"** clipboard export for effortless troubleshooting.
+
+---
+
 ## Running & Testing
 
 ### Running the Python Mock Server (Interactive Verification)
