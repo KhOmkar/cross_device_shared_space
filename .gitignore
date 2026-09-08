@@ -1,0 +1,44 @@
+﻿# Built-in Android / Gradle ignore
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+*/build/
+**/build/
+android/.gradle/
+android/.idea/
+android/local.properties
+android/app/build/
+*.apk
+*.ap_
+*.aab
+*.hprof
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv
+env/
+venv/
+ENV/
+*.log
+
+# Keystores & Credentials
+*.jks
+*.keystore
+*.key
+*.pem
+google-services.json
+
+# IDE & OS files
+Thumbs.db
+Desktop.ini
+.vscode/

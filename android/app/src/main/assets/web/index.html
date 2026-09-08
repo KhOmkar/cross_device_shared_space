@@ -1,0 +1,1675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anonymous File Transfer</title>
+  <!-- Strict Content Security Policy -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'none'; frame-ancestors 'none';">
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-card: #1e293b;
+      --border-color: #334155;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent-primary: #38bdf8;
+      --accent-hover: #0ea5e9;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --radius: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1.5rem 1rem;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 680px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    /* Warning Banner for Public PC */
+    .alert-banner {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: #fbbf24;
+      border-radius: var(--radius);
+      padding: 0.85rem 1rem;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+    }
+
+    .alert-banner .icon {
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .header h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--text-primary);
+    }
+
+    .header .badge {
+      font-size: 0.75rem;
+      background: #0284c7;
+      color: white;
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+
+    .session-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.8rem;
+      padding: 0.3rem 0.75rem;
+      border-radius: 9999px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--danger);
+    }
+
+    .status-dot.connected {
+      background: var(--success);
+      box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .card-desc {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      margin-bottom: 1.25rem;
+    }
+
+    /* Pairing Form */
+    .pairing-box {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .input-group label {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .code-input-wrapper {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .code-input {
+      flex: 1;
+      background: #090d16;
+      border: 2px solid var(--border-color);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 1.25rem;
+      font-family: monospace;
+      color: var(--text-primary);
+      text-align: center;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .code-input:focus {
+      border-color: var(--accent-primary);
+    }
+
+    .btn {
+      background: var(--accent-primary);
+      color: #0f172a;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem 1.25rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .btn:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-secondary {
+      background: var(--border-color);
+      color: var(--text-primary);
+    }
+
+    .btn-secondary:hover {
+      background: #475569;
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 1.25rem;
+      gap: 0.5rem;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      padding: 0.6rem 1rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    .tab-btn.active {
+      color: var(--accent-primary);
+      border-bottom-color: var(--accent-primary);
+    }
+
+    /* Drop Zone */
+    .dropzone {
+      border: 2px dashed var(--border-color);
+      border-radius: var(--radius);
+      padding: 2rem 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      background: rgba(15, 23, 42, 0.5);
+      transition: border-color 0.2s, background 0.2s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .dropzone.dragover {
+      border-color: var(--accent-primary);
+      background: rgba(56, 189, 248, 0.05);
+    }
+
+    .dropzone-icon {
+      font-size: 2.5rem;
+      color: var(--accent-primary);
+    }
+
+    .dropzone-text {
+      font-size: 0.95rem;
+      color: var(--text-primary);
+    }
+
+    .dropzone-subtext {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* Transfer Items */
+    .transfers-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      margin-top: 1rem;
+    }
+
+    .transfer-item {
+      background: #090d16;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .transfer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.9rem;
+    }
+
+    .file-name {
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 70%;
+    }
+
+    .file-size {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .progress-bar-container {
+      width: 100%;
+      height: 8px;
+      background: #1e293b;
+      border-radius: 9999px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--accent-primary);
+      width: 0%;
+      transition: width 0.15s ease-out;
+    }
+
+    .progress-bar.success {
+      background: var(--success);
+    }
+
+    .progress-bar.error {
+      background: var(--danger);
+    }
+
+    .transfer-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .speed-eta {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .error-msg {
+      color: var(--danger);
+      font-size: 0.85rem;
+      margin-top: 0.4rem;
+    }
+
+    .success-msg {
+      color: var(--success);
+      font-size: 0.85rem;
+      margin-top: 0.4rem;
+    }
+
+    .footer {
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: auto;
+      padding-top: 1.5rem;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* Action bar */
+    .session-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border-color);
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Public Computer Security Advisory -->
+    <div class="alert-banner">
+      <span class="icon">⚠️</span>
+      <div>
+        <strong>Public / Shared Computer Notice:</strong>
+        Ensure you are using a <em>Private / Incognito</em> browser window. Downloaded files remain in this PC's local Downloads folder. Remember to delete any sensitive downloaded files and close this browser window when done.
+      </div>
+    </div>
+
+    <!-- Header -->
+    <header class="header">
+      <h1>
+        <span>⚡ Anonymous File Share</span>
+        <span class="badge">V1 Local</span>
+      </h1>
+      <div class="session-badge">
+        <span id="status-dot" class="status-dot"></span>
+        <span id="status-text">Disconnected</span>
+      </div>
+    </header>
+
+    <!-- Step 1: Pairing Screen -->
+    <div id="pairing-section" class="card">
+      <h2 class="card-title">Connect to Phone</h2>
+      <p class="card-desc">Enter the ephemeral pairing code displayed on the phone's screen to establish an end-to-end encrypted session.</p>
+
+      <form id="pairing-form" class="pairing-box">
+        <div class="input-group">
+          <label for="pairing-code">Pairing Code (6 digits / chars)</label>
+          <div class="code-input-wrapper">
+            <input type="text" id="pairing-code" class="code-input" placeholder="123456" maxlength="16" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" required>
+            <button type="submit" id="btn-connect" class="btn">Connect</button>
+          </div>
+        </div>
+        <div id="pairing-error" class="error-msg hidden"></div>
+      </form>
+    </div>
+
+    <!-- Step 2: Transfer Dashboard (Shown when connected) -->
+    <div id="transfer-section" class="card hidden">
+      <div class="tabs">
+        <button id="tab-send" class="tab-btn active">Send Files to Phone</button>
+        <button id="tab-receive" class="tab-btn">Receive Files from Phone</button>
+      </div>
+
+      <!-- Send Panel -->
+      <div id="panel-send">
+        <div id="dropzone" class="dropzone">
+          <div class="dropzone-icon">📁</div>
+          <div class="dropzone-text">Drag & drop files here or click to browse</div>
+          <div class="dropzone-subtext">Files are encrypted chunk-by-chunk in your browser before transfer</div>
+          <input type="file" id="file-input" multiple class="hidden">
+        </div>
+      </div>
+
+      <!-- Receive Panel -->
+      <div id="panel-receive" class="hidden">
+        <p class="card-desc" style="margin-bottom: 0.5rem;">Incoming files sent from the phone will appear below automatically.</p>
+      </div>
+
+      <!-- Active Transfers List -->
+      <div id="transfers-container" class="transfers-list"></div>
+
+      <!-- Session Actions -->
+      <div class="session-actions">
+        <div style="font-size: 0.8rem; color: var(--text-secondary);">
+          Encrypted: <span style="color: var(--accent-primary);">AES-256-GCM (SPAKE2 PAKE)</span>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button id="btn-clear-list" class="btn btn-secondary" style="font-size: 0.85rem; padding: 0.5rem 0.9rem;">
+            Clear List
+          </button>
+          <button id="btn-disconnect" class="btn btn-secondary" style="font-size: 0.85rem; padding: 0.5rem 0.9rem;">
+            End Session
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      No cloud servers • No tracking • Zero setup • Ephemeral memory-only state
+    </footer>
+  </div>
+
+  <script>
+    /* Anonymous Local File Transfer Web Client */
+    (function () {
+      'use strict';
+
+      // --- Pure JavaScript Self-Contained Cryptographic Engine ---
+      // Runs seamlessly in all browsers and insecure HTTP local LAN contexts
+      const PureCrypto = (function () {
+        const K = new Uint32Array([
+          0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+          0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+          0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+          0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+          0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+          0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+          0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+          0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+        ]);
+
+        function ror(x, n) { return ((x >>> n) | (x << (32 - n))) >>> 0; }
+        function ch(x, y, z) { return ((x & y) ^ (~x & z)) >>> 0; }
+        function maj(x, y, z) { return ((x & y) ^ (x & z) ^ (y & z)) >>> 0; }
+        function sigma0(x) { return (ror(x, 2) ^ ror(x, 13) ^ ror(x, 22)) >>> 0; }
+        function sigma1(x) { return (ror(x, 6) ^ ror(x, 11) ^ ror(x, 25)) >>> 0; }
+        function gamma0(x) { return (ror(x, 7) ^ ror(x, 18) ^ (x >>> 3)) >>> 0; }
+        function gamma1(x) { return (ror(x, 17) ^ ror(x, 19) ^ (x >>> 10)) >>> 0; }
+
+        function sha256(bytes) {
+          if (typeof bytes === 'string') bytes = new TextEncoder().encode(bytes);
+          const len = bytes.length;
+          const bitLen = len * 8;
+          const padLen = (((len + 8) >>> 6) + 1) << 6;
+          const buf = new Uint8Array(padLen);
+          buf.set(bytes);
+          buf[len] = 0x80;
+          const view = new DataView(buf.buffer);
+          view.setUint32(padLen - 4, bitLen >>> 0, false);
+          view.setUint32(padLen - 8, Math.floor(bitLen / 0x100000000), false);
+
+          let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a;
+          let h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+
+          const w = new Uint32Array(64);
+
+          for (let i = 0; i < padLen; i += 64) {
+            for (let j = 0; j < 16; j++) {
+              w[j] = view.getUint32(i + j * 4, false);
+            }
+            for (let j = 16; j < 64; j++) {
+              w[j] = (gamma1(w[j - 2]) + w[j - 7] + gamma0(w[j - 15]) + w[j - 16]) >>> 0;
+            }
+
+            let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+
+            for (let j = 0; j < 64; j++) {
+              const t1 = (h + sigma1(e) + ch(e, f, g) + K[j] + w[j]) >>> 0;
+              const t2 = (sigma0(a) + maj(a, b, c)) >>> 0;
+              h = g; g = f; f = e; e = (d + t1) >>> 0;
+              d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+            }
+
+            h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0;
+            h4 = (h4 + e) >>> 0; h5 = (h5 + f) >>> 0; h6 = (h6 + g) >>> 0; h7 = (h7 + h) >>> 0;
+          }
+
+          const out = new Uint8Array(32);
+          const outView = new DataView(out.buffer);
+          outView.setUint32(0, h0, false); outView.setUint32(4, h1, false);
+          outView.setUint32(8, h2, false); outView.setUint32(12, h3, false);
+          outView.setUint32(16, h4, false); outView.setUint32(20, h5, false);
+          outView.setUint32(24, h6, false); outView.setUint32(28, h7, false);
+          return out;
+        }
+
+        function hmacSha256(key, data) {
+          if (typeof key === 'string') key = new TextEncoder().encode(key);
+          if (typeof data === 'string') data = new TextEncoder().encode(data);
+          if (key.length > 64) key = sha256(key);
+          const k = new Uint8Array(64);
+          k.set(key);
+
+          const ipad = new Uint8Array(64);
+          const opad = new Uint8Array(64);
+          for (let i = 0; i < 64; i++) {
+            ipad[i] = k[i] ^ 0x36;
+            opad[i] = k[i] ^ 0x5c;
+          }
+
+          const inner = new Uint8Array(64 + data.length);
+          inner.set(ipad, 0);
+          inner.set(data, 64);
+          const innerHash = sha256(inner);
+
+          const outer = new Uint8Array(64 + 32);
+          outer.set(opad, 0);
+          outer.set(innerHash, 64);
+          return sha256(outer);
+        }
+
+        function pbkdf2(password, salt, iterations = 10000, keyLen = 32) {
+          if (typeof password === 'string') password = new TextEncoder().encode(password);
+          if (typeof salt === 'string') salt = new TextEncoder().encode(salt);
+
+          const numBlocks = Math.ceil(keyLen / 32);
+          const result = new Uint8Array(numBlocks * 32);
+
+          for (let block = 1; block <= numBlocks; block++) {
+            const saltBlock = new Uint8Array(salt.length + 4);
+            saltBlock.set(salt);
+            saltBlock[salt.length] = (block >>> 24) & 0xff;
+            saltBlock[salt.length + 1] = (block >>> 16) & 0xff;
+            saltBlock[salt.length + 2] = (block >>> 8) & 0xff;
+            saltBlock[salt.length + 3] = block & 0xff;
+
+            let u = hmacSha256(password, saltBlock);
+            const t = new Uint8Array(u);
+
+            for (let i = 1; i < iterations; i++) {
+              u = hmacSha256(password, u);
+              for (let j = 0; j < 32; j++) {
+                t[j] ^= u[j];
+              }
+            }
+            result.set(t, (block - 1) * 32);
+          }
+          return result.slice(0, keyLen);
+        }
+
+        function hkdf(ikm, salt, info, length = 32) {
+          if (typeof salt === 'string') salt = new TextEncoder().encode(salt);
+          if (typeof info === 'string') info = new TextEncoder().encode(info);
+          const prk = hmacSha256(salt, ikm);
+
+          const infoWithCounter = new Uint8Array(info.length + 1);
+          infoWithCounter.set(info, 0);
+          infoWithCounter[info.length] = 0x01;
+
+          const okm = hmacSha256(prk, infoWithCounter);
+          return okm.slice(0, length);
+        }
+
+        // P-256 Curve with BigInt
+        const P256 = (function () {
+          const p = 0xffffffff00000001000000000000000000000000ffffffffffffffffffffffffn;
+          const a = 0xffffffff00000001000000000000000000000000fffffffffffffffffffffffcn;
+          const gx = 0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296n;
+          const gy = 0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5n;
+          const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+
+          function mod(val, m = p) {
+            const res = val % m;
+            return res < 0n ? res + m : res;
+          }
+
+          function modPow(base, exp, m = p) {
+            let res = 1n;
+            let b = mod(base, m);
+            let e = exp;
+            while (e > 0n) {
+              if (e & 1n) res = mod(res * b, m);
+              b = mod(b * b, m);
+              e >>= 1n;
+            }
+            return res;
+          }
+
+          function modInv(val, m = p) {
+            return modPow(val, m - 2n, m);
+          }
+
+          function pointAdd(x1, y1, x2, y2) {
+            if (x1 === 0n && y1 === 0n) return [x2, y2];
+            if (x2 === 0n && y2 === 0n) return [x1, y1];
+            if (x1 === x2) {
+              if (y1 !== y2) return [0n, 0n];
+              const lambda = mod(mod(3n * x1 * x1 + a) * modInv(2n * y1));
+              const x3 = mod(lambda * lambda - 2n * x1);
+              const y3 = mod(lambda * (x1 - x3) - y1);
+              return [x3, y3];
+            }
+            const lambda = mod((y2 - y1) * modInv(x2 - x1));
+            const x3 = mod(lambda * lambda - x1 - x2);
+            const y3 = mod(lambda * (x1 - x3) - y1);
+            return [x3, y3];
+          }
+
+          function scalarMult(k, px = gx, py = gy) {
+            let rx = 0n, ry = 0n;
+            let qx = px, qy = py;
+            let s = k;
+            while (s > 0n) {
+              if (s & 1n) {
+                [rx, ry] = pointAdd(rx, ry, qx, qy);
+              }
+              [qx, qy] = pointAdd(qx, qy, qx, qy);
+              s >>= 1n;
+            }
+            return [rx, ry];
+          }
+
+          function bigintToHex(bn, len = 64) {
+            return bn.toString(16).padStart(len, '0');
+          }
+
+          function hexToBigint(hex) {
+            return BigInt('0x' + hex);
+          }
+
+          function generateKeyPair() {
+            const randBytes = new Uint8Array(32);
+            if (window.crypto && window.crypto.getRandomValues) {
+              window.crypto.getRandomValues(randBytes);
+            } else {
+              for (let i = 0; i < 32; i++) randBytes[i] = (Math.random() * 256) | 0;
+            }
+            const privHex = Array.from(randBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+            const priv = mod(hexToBigint(privHex), n - 1n) + 1n;
+            const [pubX, pubY] = scalarMult(priv);
+            const pubHex = '04' + bigintToHex(pubX) + bigintToHex(pubY);
+            return { priv, pubHex };
+          }
+
+          function deriveSharedSecret(priv, peerPubHex) {
+            if (peerPubHex.startsWith('04')) peerPubHex = peerPubHex.slice(2);
+            const pubX = hexToBigint(peerPubHex.slice(0, 64));
+            const pubY = hexToBigint(peerPubHex.slice(64, 128));
+            const [sharedX] = scalarMult(priv, pubX, pubY);
+            const hex = bigintToHex(sharedX, 64);
+            const bytes = new Uint8Array(32);
+            for (let i = 0; i < 32; i++) {
+              bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+            }
+            return bytes;
+          }
+
+          return { generateKeyPair, deriveSharedSecret };
+        })();
+
+        // AES-256-GCM
+        const AES256GCM = (function () {
+          const SBOX = new Uint8Array([
+            0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
+            0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
+            0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
+            0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75,
+            0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6, 0xb3, 0x29, 0xe3, 0x2f, 0x84,
+            0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb, 0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf,
+            0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x7f, 0x50, 0x3c, 0x9f, 0xa8,
+            0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5, 0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2,
+            0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44, 0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73,
+            0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a, 0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb,
+            0xe0, 0x32, 0x3a, 0x0a, 0x49, 0x06, 0x24, 0x5c, 0xc2, 0xd3, 0xac, 0x62, 0x91, 0x95, 0xe4, 0x79,
+            0xe7, 0xc8, 0x37, 0x6d, 0x8d, 0xd5, 0x4e, 0xa9, 0x6c, 0x56, 0xf4, 0xea, 0x65, 0x7a, 0xae, 0x08,
+            0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a,
+            0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
+            0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
+            0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
+          ]);
+
+          const RCON = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
+
+          function keyExpansion(key) {
+            const w = new Uint32Array(60);
+            for (let i = 0; i < 8; i++) {
+              w[i] = (key[4 * i] << 24) | (key[4 * i + 1] << 16) | (key[4 * i + 2] << 8) | key[4 * i + 3];
+            }
+            for (let i = 8; i < 60; i++) {
+              let temp = w[i - 1];
+              if (i % 8 === 0) {
+                temp = ((SBOX[(temp >>> 16) & 0xff] << 24) |
+                        (SBOX[(temp >>> 8) & 0xff] << 16) |
+                        (SBOX[temp & 0xff] << 8) |
+                        SBOX[temp >>> 24]) ^ (RCON[(i / 8) - 1] << 24);
+              } else if (i % 8 === 4) {
+                temp = (SBOX[temp >>> 24] << 24) |
+                       (SBOX[(temp >>> 16) & 0xff] << 16) |
+                       (SBOX[(temp >>> 8) & 0xff] << 8) |
+                       SBOX[temp & 0xff];
+              }
+              w[i] = (w[i - 8] ^ temp) >>> 0;
+            }
+            return w;
+          }
+
+          function gmul(a, b) {
+            let p = 0;
+            for (let i = 0; i < 8; i++) {
+              if (b & 1) p ^= a;
+              const hi = a & 0x80;
+              a = (a << 1) & 0xff;
+              if (hi) a ^= 0x1b;
+              b >>= 1;
+            }
+            return p;
+          }
+
+          function encryptBlock(block, w) {
+            const state = new Uint8Array(16);
+            state.set(block);
+
+            for (let i = 0; i < 4; i++) {
+              const rk = w[i];
+              state[i * 4] ^= (rk >>> 24) & 0xff;
+              state[i * 4 + 1] ^= (rk >>> 16) & 0xff;
+              state[i * 4 + 2] ^= (rk >>> 8) & 0xff;
+              state[i * 4 + 3] ^= rk & 0xff;
+            }
+
+            for (let round = 1; round <= 14; round++) {
+              for (let i = 0; i < 16; i++) state[i] = SBOX[state[i]];
+
+              const t1 = state[1]; state[1] = state[5]; state[5] = state[9]; state[9] = state[13]; state[13] = t1;
+              const t2 = state[2]; state[2] = state[10]; state[10] = t2;
+              const t6 = state[6]; state[6] = state[14]; state[14] = t6;
+              const t3 = state[15]; state[15] = state[11]; state[11] = state[7]; state[7] = state[3]; state[3] = t3;
+
+              if (round < 14) {
+                for (let c = 0; c < 4; c++) {
+                  const i = c * 4;
+                  const a0 = state[i], a1 = state[i + 1], a2 = state[i + 2], a3 = state[i + 3];
+                  state[i] = gmul(2, a0) ^ gmul(3, a1) ^ a2 ^ a3;
+                  state[i + 1] = a0 ^ gmul(2, a1) ^ gmul(3, a2) ^ a3;
+                  state[i + 2] = a0 ^ a1 ^ gmul(2, a2) ^ gmul(3, a3);
+                  state[i + 3] = gmul(3, a0) ^ a1 ^ a2 ^ gmul(2, a3);
+                }
+              }
+
+              for (let i = 0; i < 4; i++) {
+                const rk = w[round * 4 + i];
+                state[i * 4] ^= (rk >>> 24) & 0xff;
+                state[i * 4 + 1] ^= (rk >>> 16) & 0xff;
+                state[i * 4 + 2] ^= (rk >>> 8) & 0xff;
+                state[i * 4 + 3] ^= rk & 0xff;
+              }
+            }
+            return state;
+          }
+
+          function ghashMul(X, Y) {
+            let z0 = 0n, z1 = 0n;
+            let v0 = (BigInt(Y[0]) << 56n) | (BigInt(Y[1]) << 48n) | (BigInt(Y[2]) << 40n) | (BigInt(Y[3]) << 32n) |
+                     (BigInt(Y[4]) << 24n) | (BigInt(Y[5]) << 16n) | (BigInt(Y[6]) << 8n) | BigInt(Y[7]);
+            let v1 = (BigInt(Y[8]) << 56n) | (BigInt(Y[9]) << 48n) | (BigInt(Y[10]) << 40n) | (BigInt(Y[11]) << 32n) |
+                     (BigInt(Y[12]) << 24n) | (BigInt(Y[13]) << 16n) | (BigInt(Y[14]) << 8n) | BigInt(Y[15]);
+
+            const R = 0xe1000000000000000000000000000000n;
+
+            for (let i = 0; i < 128; i++) {
+              const byteIdx = i >> 3;
+              const bitIdx = 7 - (i & 7);
+              if ((X[byteIdx] >> bitIdx) & 1) {
+                z0 ^= v0;
+                z1 ^= v1;
+              }
+              const lsb = v1 & 1n;
+              v1 = (v1 >> 1n) | ((v0 & 1n) << 63n);
+              v0 = v0 >> 1n;
+              if (lsb) {
+                v0 ^= (R >> 64n);
+                v1 ^= (R & 0xffffffffffffffffn);
+              }
+            }
+
+            const out = new Uint8Array(16);
+            for (let i = 0; i < 8; i++) {
+              out[i] = Number((z0 >> BigInt((7 - i) * 8)) & 0xffn);
+              out[i + 8] = Number((z1 >> BigInt((7 - i) * 8)) & 0xffn);
+            }
+            return out;
+          }
+
+          function encrypt(key, iv, plaintext) {
+            const w = keyExpansion(key);
+            const H = encryptBlock(new Uint8Array(16), w);
+
+            const J0 = new Uint8Array(16);
+            J0.set(iv, 0);
+            J0[15] = 1;
+
+            const numBlocks = Math.ceil(plaintext.length / 16);
+            const ciphertext = new Uint8Array(plaintext.length);
+            const counter = new Uint8Array(J0);
+
+            for (let i = 0; i < numBlocks; i++) {
+              let c = (counter[12] << 24) | (counter[13] << 16) | (counter[14] << 8) | counter[15];
+              c = (c + 1) >>> 0;
+              counter[12] = (c >>> 24) & 0xff;
+              counter[13] = (c >>> 16) & 0xff;
+              counter[14] = (c >>> 8) & 0xff;
+              counter[15] = c & 0xff;
+
+              const encCounter = encryptBlock(counter, w);
+              const blockStart = i * 16;
+              const blockEnd = Math.min(plaintext.length, blockStart + 16);
+              for (let j = blockStart; j < blockEnd; j++) {
+                ciphertext[j] = plaintext[j] ^ encCounter[j - blockStart];
+              }
+            }
+
+            let S = new Uint8Array(16);
+            const padLen = Math.ceil(ciphertext.length / 16) * 16;
+            const paddedCt = new Uint8Array(padLen);
+            paddedCt.set(ciphertext);
+
+            for (let i = 0; i < padLen; i += 16) {
+              for (let j = 0; j < 16; j++) S[j] ^= paddedCt[i + j];
+              S = ghashMul(S, H);
+            }
+
+            const lenBlock = new Uint8Array(16);
+            const bitLen = BigInt(ciphertext.length) * 8n;
+            for (let i = 0; i < 8; i++) {
+              lenBlock[15 - i] = Number((bitLen >> BigInt(i * 8)) & 0xffn);
+            }
+            for (let j = 0; j < 16; j++) S[j] ^= lenBlock[j];
+            S = ghashMul(S, H);
+
+            const encJ0 = encryptBlock(J0, w);
+            const tag = new Uint8Array(16);
+            for (let i = 0; i < 16; i++) tag[i] = S[i] ^ encJ0[i];
+
+            const out = new Uint8Array(ciphertext.length + 16);
+            out.set(ciphertext, 0);
+            out.set(tag, ciphertext.length);
+            return out;
+          }
+
+          function decrypt(key, iv, cipherAndTag) {
+            if (cipherAndTag.length < 16) throw new Error("Ciphertext too short");
+            const ctLen = cipherAndTag.length - 16;
+            const ciphertext = cipherAndTag.slice(0, ctLen);
+            const expectedTag = cipherAndTag.slice(ctLen);
+
+            const w = keyExpansion(key);
+            const H = encryptBlock(new Uint8Array(16), w);
+
+            const J0 = new Uint8Array(16);
+            J0.set(iv, 0);
+            J0[15] = 1;
+
+            let S = new Uint8Array(16);
+            const padLen = Math.ceil(ciphertext.length / 16) * 16;
+            const paddedCt = new Uint8Array(padLen);
+            paddedCt.set(ciphertext);
+
+            for (let i = 0; i < padLen; i += 16) {
+              for (let j = 0; j < 16; j++) S[j] ^= paddedCt[i + j];
+              S = ghashMul(S, H);
+            }
+
+            const lenBlock = new Uint8Array(16);
+            const bitLen = BigInt(ciphertext.length) * 8n;
+            for (let i = 0; i < 8; i++) {
+              lenBlock[15 - i] = Number((bitLen >> BigInt(i * 8)) & 0xffn);
+            }
+            for (let j = 0; j < 16; j++) S[j] ^= lenBlock[j];
+            S = ghashMul(S, H);
+
+            const encJ0 = encryptBlock(J0, w);
+            let tagMismatch = 0;
+            for (let i = 0; i < 16; i++) {
+              if ((S[i] ^ encJ0[i]) !== expectedTag[i]) tagMismatch = 1;
+            }
+            if (tagMismatch) throw new Error("AES-GCM authentication tag mismatch!");
+
+            const numBlocks = Math.ceil(ctLen / 16);
+            const plaintext = new Uint8Array(ctLen);
+            const counter = new Uint8Array(J0);
+
+            for (let i = 0; i < numBlocks; i++) {
+              let c = (counter[12] << 24) | (counter[13] << 16) | (counter[14] << 8) | counter[15];
+              c = (c + 1) >>> 0;
+              counter[12] = (c >>> 24) & 0xff;
+              counter[13] = (c >>> 16) & 0xff;
+              counter[14] = (c >>> 8) & 0xff;
+              counter[15] = c & 0xff;
+
+              const encCounter = encryptBlock(counter, w);
+              const blockStart = i * 16;
+              const blockEnd = Math.min(ctLen, blockStart + 16);
+              for (let j = blockStart; j < blockEnd; j++) {
+                plaintext[j] = ciphertext[j] ^ encCounter[j - blockStart];
+              }
+            }
+            return plaintext;
+          }
+
+          return { encrypt, decrypt };
+        })();
+
+        return { sha256, hmacSha256, pbkdf2, hkdf, P256, AES256GCM };
+      })();
+
+      // --- Security State (Strictly in-memory, never persisted) ---
+      let sessionState = {
+        token: null,
+        pairingCode: null,
+        sessionKey: null, // Raw 32-byte Uint8Array
+        ws: null,
+        activeTransfers: new Map(), // Incoming downloads
+        activeUploads: new Map(),   // Outgoing uploads
+        failedAttempts: 0,
+        direction: 'send'
+      };
+
+      // --- DOM Elements ---
+      const statusDot = document.getElementById('status-dot');
+      const statusText = document.getElementById('status-text');
+      const pairingSection = document.getElementById('pairing-section');
+      const transferSection = document.getElementById('transfer-section');
+      const pairingForm = document.getElementById('pairing-form');
+      const pairingCodeInput = document.getElementById('pairing-code');
+      const pairingError = document.getElementById('pairing-error');
+      const btnConnect = document.getElementById('btn-connect');
+      const btnDisconnect = document.getElementById('btn-disconnect');
+      const tabSend = document.getElementById('tab-send');
+      const tabReceive = document.getElementById('tab-receive');
+      const panelSend = document.getElementById('panel-send');
+      const panelReceive = document.getElementById('panel-receive');
+      const dropzone = document.getElementById('dropzone');
+      const fileInput = document.getElementById('file-input');
+      const transfersContainer = document.getElementById('transfers-container');
+
+      // --- Utilities ---
+      function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+      }
+
+      function safeSetText(element, text) {
+        element.textContent = text;
+      }
+
+      function arrayBufferToHex(buffer) {
+        return Array.from(new Uint8Array(buffer))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+      }
+
+      function hexToArrayBuffer(hex) {
+        const bytes = new Uint8Array(hex.length / 2);
+        for (let i = 0; i < hex.length; i += 2) {
+          bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+        }
+        return bytes.buffer;
+      }
+
+      // --- Cryptography Subsystem ---
+      const Crypto = {
+        derivePasswordKey(code) {
+          return PureCrypto.pbkdf2(code, 'anonymous-file-share-v1', 10000, 32);
+        },
+
+        generateKeyPair() {
+          return PureCrypto.P256.generateKeyPair();
+        },
+
+        deriveSessionKey(privateKeyBigInt, peerPublicHex, passwordBytes) {
+          const sharedSecret = PureCrypto.P256.deriveSharedSecret(privateKeyBigInt, peerPublicHex);
+          const combined = new Uint8Array(64);
+          combined.set(sharedSecret, 0);
+          combined.set(passwordBytes, 32);
+
+          return PureCrypto.hkdf(
+            combined,
+            'anonymous-file-share-salt',
+            'AnonymousFileShare-V1-AESGCM',
+            32
+          );
+        },
+
+        computeAuthConfirmation(sessionKey, label) {
+          const hash = PureCrypto.hmacSha256(sessionKey, label);
+          return arrayBufferToHex(hash);
+        },
+
+        encryptChunk(sessionKeyBytes, chunkIndex, plainBuffer, direction = 2) {
+          const nonce = new Uint8Array(12);
+          if (window.crypto && window.crypto.getRandomValues) {
+            window.crypto.getRandomValues(nonce);
+          } else {
+            for (let i = 0; i < 12; i++) nonce[i] = (Math.random() * 256) | 0;
+          }
+          nonce[0] = direction;
+          const view = new DataView(nonce.buffer);
+          view.setUint32(1, chunkIndex, false);
+
+          const plainBytes = new Uint8Array(plainBuffer);
+          const ciphertextWithTag = PureCrypto.AES256GCM.encrypt(sessionKeyBytes, nonce, plainBytes);
+
+          const frame = new Uint8Array(4 + 12 + ciphertextWithTag.length);
+          const frameView = new DataView(frame.buffer);
+          frameView.setUint32(0, chunkIndex, false);
+          frame.set(nonce, 4);
+          frame.set(ciphertextWithTag, 16);
+
+          return frame.buffer;
+        },
+
+        decryptChunk(sessionKeyBytes, frameBuffer) {
+          const frame = new Uint8Array(frameBuffer);
+          const frameView = new DataView(frameBuffer);
+          const chunkIndex = frameView.getUint32(0, false);
+          const nonce = frame.slice(4, 16);
+          const ciphertextWithTag = frame.slice(16);
+
+          const plaintext = PureCrypto.AES256GCM.decrypt(sessionKeyBytes, nonce, ciphertextWithTag);
+          return { chunkIndex, plaintext };
+        },
+
+        createHasher() {
+          let chunks = [];
+          return {
+            update(buffer) {
+              chunks.push(new Uint8Array(buffer));
+            },
+            digest() {
+              let totalLength = chunks.reduce((acc, c) => acc + c.byteLength, 0);
+              let combined = new Uint8Array(totalLength);
+              let offset = 0;
+              for (const c of chunks) {
+                combined.set(c, offset);
+                offset += c.byteLength;
+              }
+              const hash = PureCrypto.sha256(combined);
+              return arrayBufferToHex(hash);
+            }
+          };
+        }
+      };
+
+      // --- Transfer Protocol & Backpressure Engine ---
+      const CHUNK_SIZE = 1024 * 1024; // 1 MB per chunk
+      const BUFFER_HIGH_WATER = 4 * 1024 * 1024; // 4 MB
+
+      function createTransferUI(transferId, filename, totalSize, isUpload) {
+        const item = document.createElement('div');
+        item.className = 'transfer-item';
+        item.id = `transfer-${transferId}`;
+
+        const header = document.createElement('div');
+        header.className = 'transfer-header';
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'file-name';
+        safeSetText(nameEl, (isUpload ? '↑ ' : '↓ ') + filename);
+
+        const sizeEl = document.createElement('span');
+        sizeEl.className = 'file-size';
+        safeSetText(sizeEl, formatBytes(totalSize));
+
+        header.appendChild(nameEl);
+        header.appendChild(sizeEl);
+
+        const barContainer = document.createElement('div');
+        barContainer.className = 'progress-bar-container';
+
+        const bar = document.createElement('div');
+        bar.className = 'progress-bar';
+        barContainer.appendChild(bar);
+
+        const footer = document.createElement('div');
+        footer.className = 'transfer-footer';
+
+        const statusLabel = document.createElement('span');
+        statusLabel.className = 'status-label';
+        safeSetText(statusLabel, 'Encrypting & Transferring...');
+
+        const speedEta = document.createElement('span');
+        speedEta.className = 'speed-eta';
+        safeSetText(speedEta, '0 KB/s');
+
+        footer.appendChild(statusLabel);
+        footer.appendChild(speedEta);
+
+        item.appendChild(header);
+        item.appendChild(barContainer);
+        item.appendChild(footer);
+
+        transfersContainer.prepend(item);
+
+        return {
+          item,
+          bar,
+          statusLabel,
+          speedEta,
+          startTime: Date.now(),
+          lastBytes: 0,
+          lastTime: Date.now()
+        };
+      }
+
+      function updateTransferProgress(ui, bytesTransferred, totalBytes) {
+        const pct = Math.min(100, Math.round((bytesTransferred / totalBytes) * 100));
+        ui.bar.style.width = pct + '%';
+
+        const now = Date.now();
+        const timeDiff = (now - ui.lastTime) / 1000;
+        if (timeDiff >= 0.5) {
+          const bytesDiff = bytesTransferred - ui.lastBytes;
+          const speed = bytesDiff / timeDiff;
+          const remainingBytes = totalBytes - bytesTransferred;
+          const eta = speed > 0 ? Math.ceil(remainingBytes / speed) : 0;
+
+          safeSetText(ui.speedEta, `${formatBytes(speed)}/s • ETA ${eta}s`);
+          ui.lastBytes = bytesTransferred;
+          ui.lastTime = now;
+        }
+      }
+
+      function completeTransferUI(ui, success, message) {
+        ui.bar.style.width = '100%';
+        if (success) {
+          ui.bar.classList.add('success');
+          safeSetText(ui.statusLabel, message || '✓ Verified & Complete');
+          safeSetText(ui.speedEta, 'SHA-256 Validated');
+        } else {
+          ui.bar.classList.add('error');
+          safeSetText(ui.statusLabel, message || '✗ Transfer Failed');
+          safeSetText(ui.speedEta, 'Error');
+        }
+      }
+
+      // --- File Sender (Guest -> Phone) with Upload Queue & Backpressure ---
+      const uploadQueue = [];
+      let isUploading = false;
+
+      function enqueueFile(file) {
+        const transferId = 'tx_' + Math.random().toString(36).substr(2, 9);
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        const ui = createTransferUI(transferId, file.name, file.size, true);
+        safeSetText(ui.statusLabel, 'Queued...');
+
+        const item = {
+          file: file,
+          transferId: transferId,
+          totalChunks: totalChunks,
+          ui: ui
+        };
+
+        uploadQueue.push(item);
+        processUploadQueue();
+      }
+
+      async function processUploadQueue() {
+        if (isUploading || uploadQueue.length === 0) return;
+        isUploading = true;
+        const item = uploadQueue.shift();
+        try {
+          await sendSingleFile(item);
+        } catch (err) {
+          console.error('Queue upload error:', err);
+          completeTransferUI(item.ui, false, 'Send error: ' + err.message);
+        } finally {
+          isUploading = false;
+          if (uploadQueue.length > 0) {
+            processUploadQueue();
+          }
+        }
+      }
+
+      function sendSingleFile(item) {
+        return new Promise(async (resolve) => {
+          if (!sessionState.ws || sessionState.ws.readyState !== WebSocket.OPEN) {
+            completeTransferUI(item.ui, false, 'Not connected to phone');
+            return resolve();
+          }
+
+          const { file, transferId, totalChunks, ui } = item;
+          const hasher = Crypto.createHasher();
+
+          let timeoutId = null;
+          let isResolved = false;
+          const safeResolve = () => {
+            if (isResolved) return;
+            isResolved = true;
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+              timeoutId = null;
+            }
+            resolve();
+          };
+
+          sessionState.activeUploads.set(transferId, {
+            ui: ui,
+            resolve: safeResolve
+          });
+
+          // 1. Send Metadata Control Frame
+          const meta = {
+            type: 'meta',
+            transferId: transferId,
+            filename: file.name,
+            size: file.size,
+            chunkSize: CHUNK_SIZE,
+            totalChunks: totalChunks,
+            direction: 'guest_to_phone'
+          };
+
+          safeSetText(ui.statusLabel, 'Encrypting & Transferring...');
+          sessionState.ws.send(JSON.stringify(meta));
+
+          // 2. Stream Chunks with Backpressure
+          let offset = 0;
+          let chunkIndex = 0;
+
+          async function waitForBufferDrain() {
+            while (sessionState.ws && sessionState.ws.bufferedAmount > BUFFER_HIGH_WATER) {
+              await new Promise(r => setTimeout(r, 50));
+            }
+          }
+
+          try {
+            while (offset < file.size) {
+              if (!sessionState.ws || sessionState.ws.readyState !== WebSocket.OPEN) {
+                throw new Error('Connection lost during transfer');
+              }
+              await waitForBufferDrain();
+
+              const slice = file.slice(offset, offset + CHUNK_SIZE);
+              const arrayBuffer = await slice.arrayBuffer();
+
+              hasher.update(arrayBuffer);
+
+              // Encrypt chunk
+              const encryptedFrame = Crypto.encryptChunk(
+                sessionState.sessionKey,
+                chunkIndex,
+                arrayBuffer,
+                2 // Guest to phone
+              );
+
+              sessionState.ws.send(encryptedFrame);
+
+              offset += arrayBuffer.byteLength;
+              chunkIndex++;
+
+              updateTransferProgress(ui, offset, file.size);
+            }
+
+            // 3. Send Done Frame with Checksum
+            const checksum = hasher.digest();
+            const doneMsg = {
+              type: 'done',
+              transferId: transferId,
+              checksum: checksum
+            };
+
+            safeSetText(ui.statusLabel, 'Verifying with phone...');
+            sessionState.ws.send(JSON.stringify(doneMsg));
+
+            // Timeout safety fallback (60s)
+            timeoutId = setTimeout(() => {
+              const up = sessionState.activeUploads.get(transferId);
+              if (up) {
+                sessionState.activeUploads.delete(transferId);
+                completeTransferUI(ui, false, 'Timeout waiting for verification ACK');
+                up.resolve();
+              }
+            }, 60000);
+
+          } catch (err) {
+            console.error('Send error:', err);
+            completeTransferUI(ui, false, 'Send error: ' + err.message);
+            sessionState.activeUploads.delete(transferId);
+            safeResolve();
+          }
+        });
+      }
+
+      // --- File Receiver (Phone -> Guest) ---
+      function handleIncomingMeta(meta) {
+        const ui = createTransferUI(meta.transferId, meta.filename, meta.size, false);
+        const transfer = {
+          meta: meta,
+          ui: ui,
+          hasher: Crypto.createHasher(),
+          receivedBytes: 0,
+          chunks: [],
+          memoryBufferBytes: 0,
+          expectedChunks: meta.totalChunks
+        };
+        sessionState.activeTransfers.set(meta.transferId, transfer);
+      }
+
+      function handleIncomingChunk(frameBuffer) {
+        const transfer = Array.from(sessionState.activeTransfers.values())
+          .find(t => t.meta.direction === 'phone_to_guest');
+
+        if (!transfer) return;
+
+        try {
+          const { chunkIndex, plaintext } = Crypto.decryptChunk(
+            sessionState.sessionKey,
+            frameBuffer
+          );
+
+          transfer.hasher.update(plaintext);
+          transfer.chunks.push(plaintext);
+          transfer.receivedBytes += plaintext.byteLength;
+          transfer.memoryBufferBytes += plaintext.byteLength;
+
+          updateTransferProgress(transfer.ui, transfer.receivedBytes, transfer.meta.size);
+        } catch (err) {
+          console.error('Decryption failed on incoming chunk:', err);
+          completeTransferUI(transfer.ui, false, 'Decryption/Integrity Error');
+          sessionState.activeTransfers.delete(transfer.meta.transferId);
+        }
+      }
+
+      function handleIncomingDone(doneMsg) {
+        const transfer = sessionState.activeTransfers.get(doneMsg.transferId);
+        if (!transfer) return;
+
+        try {
+          const computedHash = transfer.hasher.digest();
+          if (computedHash.toLowerCase() !== doneMsg.checksum.toLowerCase()) {
+            throw new Error(`Checksum mismatch! Expected: ${doneMsg.checksum}, Computed: ${computedHash}`);
+          }
+
+          // Assemble file and trigger download
+          const blob = new Blob(transfer.chunks, { type: 'application/octet-stream' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = transfer.meta.filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+
+          setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+          completeTransferUI(transfer.ui, true, '✓ Downloaded & Verified');
+
+          // Send ACK
+          sessionState.ws.send(JSON.stringify({
+            type: 'ack',
+            transferId: doneMsg.transferId,
+            status: 'ok',
+            verified: true
+          }));
+        } catch (err) {
+          console.error('Done verification error:', err);
+          completeTransferUI(transfer.ui, false, 'Verification Failed');
+        } finally {
+          transfer.chunks = [];
+          sessionState.activeTransfers.delete(doneMsg.transferId);
+        }
+      }
+
+      // --- Connection & PAKE Handshake ---
+      function connect(pairingCode, tokenParam) {
+        pairingError.classList.add('hidden');
+        btnConnect.disabled = true;
+        safeSetText(btnConnect, 'Connecting...');
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const token = tokenParam || sessionState.token || 'manual_pairing';
+        const wsUrl = `${protocol}//${host}/transfer?token=${encodeURIComponent(token)}`;
+
+        try {
+          // 1. Generate PAKE Ephemeral Keys
+          const passwordBytes = Crypto.derivePasswordKey(pairingCode);
+          const keyPair = Crypto.generateKeyPair();
+
+          const ws = new WebSocket(wsUrl);
+          ws.binaryType = 'arraybuffer';
+
+          ws.onopen = () => {
+            safeSetText(statusText, 'Authenticating...');
+            statusDot.className = 'status-dot';
+
+            // Send PAKE Init
+            ws.send(JSON.stringify({
+              type: 'pake_init',
+              client_pub: keyPair.pubHex,
+              code: pairingCode
+            }));
+          };
+
+          ws.onmessage = (event) => {
+            if (typeof event.data === 'string') {
+              const msg = JSON.parse(event.data);
+
+              if (msg.type === 'pake_resp') {
+                sessionState.sessionKey = Crypto.deriveSessionKey(
+                  keyPair.priv,
+                  msg.server_pub,
+                  passwordBytes
+                );
+
+                const authHash = Crypto.computeAuthConfirmation(sessionState.sessionKey, 'ClientAuth');
+
+                ws.send(JSON.stringify({
+                  type: 'pake_auth',
+                  auth: authHash
+                }));
+              } else if (msg.type === 'pake_confirmed') {
+                const expectedServerAuth = Crypto.computeAuthConfirmation(sessionState.sessionKey, 'ServerAuth');
+                if (msg.server_auth && msg.server_auth.toLowerCase() !== expectedServerAuth.toLowerCase()) {
+                  showPairingError('Server authentication verification failed');
+                  ws.close();
+                  return;
+                }
+
+                sessionState.ws = ws;
+                sessionState.pairingCode = pairingCode;
+                sessionState.token = token;
+
+                // Clear previous session transfer history
+                transfersContainer.innerHTML = '';
+                sessionState.activeTransfers.clear();
+                sessionState.activeUploads.clear();
+                uploadQueue.length = 0;
+                isUploading = false;
+
+                statusDot.classList.add('connected');
+                safeSetText(statusText, 'Connected & Encrypted');
+
+                pairingSection.classList.add('hidden');
+                transferSection.classList.remove('hidden');
+              } else if (msg.type === 'ack') {
+                const upload = sessionState.activeUploads.get(msg.transferId);
+                if (upload) {
+                  if (upload.ui) {
+                    if (msg.status === 'ok') {
+                      completeTransferUI(upload.ui, true, '✓ Saved & Verified on Phone');
+                    } else {
+                      completeTransferUI(upload.ui, false, '✗ Phone error: ' + (msg.message || 'Verification failed'));
+                    }
+                  }
+                  sessionState.activeUploads.delete(msg.transferId);
+                  if (typeof upload.resolve === 'function') {
+                    upload.resolve();
+                  }
+                }
+              } else if (msg.type === 'meta') {
+                handleIncomingMeta(msg);
+              } else if (msg.type === 'done') {
+                handleIncomingDone(msg);
+              } else if (msg.type === 'error') {
+                showPairingError(msg.message || 'Authentication failed');
+                ws.close();
+              }
+            } else if (event.data instanceof ArrayBuffer) {
+              handleIncomingChunk(event.data);
+            }
+          };
+
+          ws.onerror = (err) => {
+            console.error('WebSocket error:', err);
+            showPairingError('Connection failed. Ensure you are connected to the phone hotspot.');
+          };
+
+          ws.onclose = () => {
+            handleDisconnect();
+          };
+        } catch (err) {
+          console.error('Connect error:', err);
+          showPairingError(err.message);
+          btnConnect.disabled = false;
+          safeSetText(btnConnect, 'Connect');
+        }
+      }
+
+      function showPairingError(msg) {
+        safeSetText(pairingError, msg);
+        pairingError.classList.remove('hidden');
+        btnConnect.disabled = false;
+        safeSetText(btnConnect, 'Connect');
+        statusDot.className = 'status-dot';
+        safeSetText(statusText, 'Disconnected');
+      }
+
+      function handleDisconnect() {
+        if (sessionState.sessionKey) {
+          sessionState.sessionKey = null;
+        }
+        if (sessionState.ws) {
+          try { sessionState.ws.close(); } catch (_) {}
+          sessionState.ws = null;
+        }
+        for (const upload of sessionState.activeUploads.values()) {
+          if (upload.ui) {
+            completeTransferUI(upload.ui, false, 'Disconnected');
+          }
+          if (typeof upload.resolve === 'function') {
+            upload.resolve();
+          }
+        }
+        sessionState.activeTransfers.clear();
+        sessionState.activeUploads.clear();
+        uploadQueue.length = 0;
+        isUploading = false;
+
+        statusDot.className = 'status-dot';
+        safeSetText(statusText, 'Disconnected');
+
+        transferSection.classList.add('hidden');
+        pairingSection.classList.remove('hidden');
+        btnConnect.disabled = false;
+        safeSetText(btnConnect, 'Connect');
+      }
+
+      // --- UI Event Handlers ---
+      pairingForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const code = pairingCodeInput.value.trim().toUpperCase();
+        if (code) {
+          connect(code, sessionState.token);
+        }
+      });
+
+      btnDisconnect.addEventListener('click', () => {
+        handleDisconnect();
+      });
+
+      const btnClearList = document.getElementById('btn-clear-list');
+      if (btnClearList) {
+        btnClearList.addEventListener('click', () => {
+          transfersContainer.innerHTML = '';
+        });
+      }
+
+      // Tabs
+      tabSend.addEventListener('click', () => {
+        tabSend.classList.add('active');
+        tabReceive.classList.remove('active');
+        panelSend.classList.remove('hidden');
+        panelReceive.classList.add('hidden');
+      });
+
+      tabReceive.addEventListener('click', () => {
+        tabReceive.classList.add('active');
+        tabSend.classList.remove('active');
+        panelReceive.classList.remove('hidden');
+        panelSend.classList.add('hidden');
+      });
+
+      // Drag & Drop
+      dropzone.addEventListener('click', () => fileInput.click());
+
+      dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      });
+
+      dropzone.addEventListener('dragleave', () => {
+        dropzone.classList.remove('dragover');
+      });
+
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+          Array.from(e.dataTransfer.files).forEach(file => enqueueFile(file));
+        }
+      });
+
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files.length > 0) {
+          Array.from(fileInput.files).forEach(file => enqueueFile(file));
+          fileInput.value = '';
+        }
+      });
+
+      // Auto-fill from URL Query Params
+      window.addEventListener('DOMContentLoaded', () => {
+        const params = new URLSearchParams(window.location.search);
+        const tokenParam = params.get('token');
+        const codeParam = params.get('code');
+
+        if (tokenParam) {
+          sessionState.token = tokenParam;
+        }
+        if (codeParam) {
+          pairingCodeInput.value = codeParam;
+          connect(codeParam, tokenParam);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
