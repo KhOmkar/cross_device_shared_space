@@ -269,6 +269,7 @@ fun MainScreen(
             // Live Debug Logs Section
             item {
                 var showLogs by remember { mutableStateOf(false) }
+                val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
@@ -287,6 +288,11 @@ fun MainScreen(
                             )
                             Row {
                                 if (logs.isNotEmpty()) {
+                                    TextButton(onClick = {
+                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(logs.joinToString("\n")))
+                                    }) {
+                                        Text("Copy")
+                                    }
                                     TextButton(onClick = { viewModel.clearLogs() }) {
                                         Text("Clear")
                                     }

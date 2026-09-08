@@ -58,6 +58,9 @@ class StorageManager(
 
     private val activeSessions = mutableMapOf<String, ActiveFileSession>()
 
+    @Synchronized
+    fun hasActiveSession(transferId: String): Boolean = activeSessions.containsKey(transferId)
+
     /**
      * Sanitizes client filename removing directory traversal characters.
      */

@@ -109,15 +109,20 @@ class WebSocketTransferChannel(
 
                                     AppLogger.i("WebSocketChannel", "Incoming done: id=$txId, checksum=$checksum")
 
-                                    try {
-                                        storageManager.finalizeTransfer(txId, checksum)
-                                        AppLogger.i("WebSocketChannel", "Sending ok ack for $txId")
-                                        ws.sendText("{\"type\":\"ack\",\"transferId\":\"$txId\",\"status\":\"ok\",\"verified\":true}")
-                                        onIncomingTransferEvent?.invoke(txId, currentFilename, currentTotalSize, currentTotalSize, true, null)
-                                    } catch (e: Exception) {
-                                        AppLogger.e("WebSocketChannel", "Verification failed for $txId: ${e.message}", e)
-                                        ws.sendText("{\"type\":\"ack\",\"transferId\":\"$txId\",\"status\":\"error\",\"message\":\"${e.message}\"}")
-                                        onIncomingTransferEvent?.invoke(txId, currentFilename, currentTotalSize, currentReceivedBytes, false, e.message ?: "Verification failed")
+                                    if (!storageManager.hasActiveSession(txId)) {
+                                        AppLogger.w("WebSocketChannel", "Ignoring done frame for inactive/cancelled transfer $txId")
+                                        ws.sendText("{\"type\":\"ack\",\"transferId\":\"$txId\",\"status\":\"error\",\"message\":\"Transfer session was cancelled or failed\"}")
+                                    } else {
+                                        try {
+                                            storageManager.finalizeTransfer(txId, checksum)
+                                            AppLogger.i("WebSocketChannel", "Sending ok ack for $txId")
+                                            ws.sendText("{\"type\":\"ack\",\"transferId\":\"$txId\",\"status\":\"ok\",\"verified\":true}")
+                                            onIncomingTransferEvent?.invoke(txId, currentFilename, currentTotalSize, currentTotalSize, true, null)
+                                        } catch (e: Exception) {
+                                            AppLogger.e("WebSocketChannel", "Verification failed for $txId: ${e.message}", e)
+                                            ws.sendText("{\"type\":\"ack\",\"transferId\":\"$txId\",\"status\":\"error\",\"message\":\"${e.message}\"}")
+                                            onIncomingTransferEvent?.invoke(txId, currentFilename, currentTotalSize, currentReceivedBytes, false, e.message ?: "Verification failed")
+                                        }
                                     }
                                     currentIncomingTransferId = null
                                 }

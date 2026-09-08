@@ -486,6 +486,7 @@
           📋 Live Event Logs (<span id="log-count">0</span>)
         </span>
         <div style="display: flex; gap: 0.5rem;">
+          <button id="btn-copy-logs" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.35rem 0.6rem;">Copy Logs</button>
           <button id="btn-clear-logs" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.35rem 0.6rem;">Clear</button>
           <button id="btn-toggle-logs" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.35rem 0.6rem;">Hide Logs</button>
         </div>
@@ -1677,6 +1678,42 @@
         btnClearList.addEventListener('click', () => {
           transfersContainer.innerHTML = '';
         });
+      }
+
+      const btnCopyLogs = document.getElementById('btn-copy-logs');
+      if (btnCopyLogs && debugLogConsole) {
+        btnCopyLogs.addEventListener('click', () => {
+          const text = debugLogConsole.innerText || debugLogConsole.textContent || '';
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => {
+              const prev = btnCopyLogs.textContent;
+              safeSetText(btnCopyLogs, '✓ Copied!');
+              setTimeout(() => { safeSetText(btnCopyLogs, prev); }, 2000);
+            }).catch(() => {
+              fallbackCopy(text);
+            });
+          } else {
+            fallbackCopy(text);
+          }
+        });
+      }
+
+      function fallbackCopy(text) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          if (btnCopyLogs) {
+            const prev = btnCopyLogs.textContent;
+            safeSetText(btnCopyLogs, '✓ Copied!');
+            setTimeout(() => { safeSetText(btnCopyLogs, prev); }, 2000);
+          }
+        } catch (_) {}
+        document.body.removeChild(ta);
       }
 
       if (btnToggleLogs && debugLogConsole) {
