@@ -1,5 +1,6 @@
 package com.anonymous.fileshare.ui
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -48,6 +49,18 @@ fun MainScreen(
         }
     }
 
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(uri, flags)
+            } catch (_: Exception) {}
+            viewModel.setCustomSaveDirectory(uri)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -79,7 +92,7 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // Hotspot / Server Status Card
             item {
@@ -111,14 +124,14 @@ fun MainScreen(
                                     .size(12.dp)
                                     .clip(CircleShape)
                                     .background(
-                                        if (uiState.isGuestConnected) Color(0xFF22C55E)
-                                        else if (uiState.isServerRunning) Color(0xFFF59E0B)
-                                        else Color(0xFFEF4444)
+                                        if (uiState.isGuestConnected) MaterialTheme.colorScheme.primary
+                                        else if (uiState.isServerRunning) MaterialTheme.colorScheme.secondary
+                                        else MaterialTheme.colorScheme.error
                                     )
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (!uiState.isServerRunning) {
@@ -148,8 +161,106 @@ fun MainScreen(
                             ) {
                                 Icon(Icons.Default.WifiTethering, contentDescription = null)
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Hotspot Settings")
+                                Text("Hotspot")
                             }
+                        }
+                    }
+                }
+            }
+
+            // Connected Device Info Card
+            if (uiState.isGuestConnected) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Devices,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        "Connected Peer",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                    Text(
+                                        uiState.connectedPeerAlias ?: "Guest PC / Browser",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFF10B981).copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    "Encrypted",
+                                    color = Color(0xFF10B981),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Save Folder Card
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    "Save Received Files To:",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                                Text(
+                                    uiState.saveFolderDisplayName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        TextButton(onClick = { folderPickerLauncher.launch(null) }) {
+                            Text("Change", color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -262,7 +373,10 @@ fun MainScreen(
                 }
 
                 items(uiState.activeTransfers, key = { it.transferId }) { transfer ->
-                    TransferItemRow(transfer)
+                    TransferItemRow(
+                        transfer = transfer,
+                        onCancel = { txId -> viewModel.cancelTransfer(txId) }
+                    )
                 }
             }
 
@@ -315,7 +429,7 @@ fun MainScreen(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
+                                        .background(Color(0xFF080B11), RoundedCornerShape(8.dp))
                                         .padding(8.dp)
                                         .heightIn(max = 240.dp)
                                 ) {
@@ -331,7 +445,7 @@ fun MainScreen(
                                                 color = when {
                                                     logLine.contains("ERROR") || logLine.contains("❌") -> Color(0xFFEF4444)
                                                     logLine.contains("WARN") || logLine.contains("⚠️") -> Color(0xFFF59E0B)
-                                                    logLine.contains("✓") -> Color(0xFF22C55E)
+                                                    logLine.contains("✓") -> Color(0xFF10B981)
                                                     else -> Color(0xFF94A3B8)
                                                 },
                                                 modifier = Modifier.padding(vertical = 2.dp)
@@ -349,7 +463,10 @@ fun MainScreen(
 }
 
 @Composable
-fun TransferItemRow(transfer: TransferItemUiState) {
+fun TransferItemRow(
+    transfer: TransferItemUiState,
+    onCancel: (String) -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -367,11 +484,27 @@ fun TransferItemRow(transfer: TransferItemUiState) {
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f)
                 )
-                Text(
-                    "${transfer.progressPct}%",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${transfer.progressPct}%",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (transfer.status == TransferStatus.TRANSFERRING) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(
+                            onClick = { onCancel(transfer.transferId) },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Cancel Transfer",
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -383,8 +516,9 @@ fun TransferItemRow(transfer: TransferItemUiState) {
                     .height(6.dp)
                     .clip(CircleShape),
                 color = when (transfer.status) {
-                    TransferStatus.COMPLETED -> Color(0xFF22C55E)
+                    TransferStatus.COMPLETED -> Color(0xFF10B981)
                     TransferStatus.FAILED -> Color(0xFFEF4444)
+                    TransferStatus.CANCELLED -> Color(0xFFEF4444)
                     TransferStatus.TRANSFERRING -> MaterialTheme.colorScheme.primary
                 }
             )
@@ -399,12 +533,14 @@ fun TransferItemRow(transfer: TransferItemUiState) {
                     when (transfer.status) {
                         TransferStatus.COMPLETED -> "✓ Verified SHA-256"
                         TransferStatus.FAILED -> "✗ Failed: ${transfer.errorMessage ?: "Error"}"
+                        TransferStatus.CANCELLED -> "✗ Cancelled"
                         TransferStatus.TRANSFERRING -> "AES-256 Encrypted Transfer"
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = when (transfer.status) {
-                        TransferStatus.COMPLETED -> Color(0xFF22C55E)
+                        TransferStatus.COMPLETED -> Color(0xFF10B981)
                         TransferStatus.FAILED -> Color(0xFFEF4444)
+                        TransferStatus.CANCELLED -> Color(0xFFEF4444)
                         TransferStatus.TRANSFERRING -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
                 )

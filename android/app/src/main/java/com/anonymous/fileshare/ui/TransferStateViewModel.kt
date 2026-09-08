@@ -40,12 +40,15 @@ data class TransferItemUiState(
 enum class TransferStatus {
     TRANSFERRING,
     COMPLETED,
-    FAILED
+    FAILED,
+    CANCELLED
 }
 
 data class AppUiState(
     val isServerRunning: Boolean = false,
     val isGuestConnected: Boolean = false,
+    val connectedPeerAlias: String? = null,
+    val saveFolderDisplayName: String = "Downloads/AnonymousShare",
     val pairingCode: String = "",
     val sessionToken: String = "",
     val serverUrl: String = "",
@@ -94,6 +97,7 @@ class TransferStateViewModel(application: Application) : AndroidViewModel(applic
         service.transferChannel?.onIncomingTransferEvent = { txId, filename, totalSize, bytesReceived, isCompleted, error ->
             val pct = if (totalSize > 0) ((bytesReceived.toDouble() / totalSize) * 100).toInt() else 0
             val status = when {
+                error != null && error.contains("cancel", ignoreCase = true) -> TransferStatus.CANCELLED
                 error != null -> TransferStatus.FAILED
                 isCompleted -> TransferStatus.COMPLETED
                 else -> TransferStatus.TRANSFERRING
@@ -150,10 +154,37 @@ class TransferStateViewModel(application: Application) : AndroidViewModel(applic
                         sessionToken = token,
                         serverUrl = url,
                         qrBitmap = qr,
+                        saveFolderDisplayName = service.storageManager.saveFolderDisplayName,
                         statusMessage = if (isPaired) "Guest Connected & Encrypted" else if (isRunning) "Ready for Guest Connection" else "Server Stopped"
                     )
                 }
             }
+        }
+
+        viewModelScope.launch {
+            service.connectedPeerAlias.collect { alias ->
+                _uiState.update { it.copy(connectedPeerAlias = alias) }
+            }
+        }
+    }
+
+    fun setCustomSaveDirectory(uri: Uri?) {
+        val service = boundService ?: return
+        service.storageManager.customDestinationUri = uri
+        _uiState.update { it.copy(saveFolderDisplayName = service.storageManager.saveFolderDisplayName) }
+    }
+
+    fun cancelTransfer(transferId: String) {
+        val service = boundService ?: return
+        service.transferChannel?.cancelTransfer(transferId)
+        _uiState.update { state ->
+            state.copy(
+                activeTransfers = state.activeTransfers.map {
+                    if (it.transferId == transferId) {
+                        it.copy(status = TransferStatus.CANCELLED, errorMessage = "Cancelled by you")
+                    } else it
+                }
+            )
         }
     }
 

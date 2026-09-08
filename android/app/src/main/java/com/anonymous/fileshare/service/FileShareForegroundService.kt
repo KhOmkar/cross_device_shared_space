@@ -50,6 +50,8 @@ class FileShareForegroundService : Service() {
     private val _serviceState = MutableStateFlow(ServiceStatus.STOPPED)
     val serviceState: StateFlow<ServiceStatus> = _serviceState.asStateFlow()
 
+    val connectedPeerAlias = MutableStateFlow<String?>(null)
+
     enum class ServiceStatus {
         STOPPED,
         RUNNING,
@@ -151,7 +153,8 @@ class FileShareForegroundService : Service() {
 
                 val clientPubHex = initJson.getString("client_pub")
                 val code = initJson.optString("code", "")
-                AppLogger.d("Service", "PAKE Init received: code=$code")
+                val clientAlias = initJson.optString("device_alias", "Connected Guest")
+                AppLogger.d("Service", "PAKE Init received: code=$code, alias=$clientAlias")
 
                 // Validate Pairing Code
                 if (!sessionManager.validatePairingCode(code)) {
@@ -168,8 +171,8 @@ class FileShareForegroundService : Service() {
                 sessionManager.setDerivedKey(sessionKey)
                 AppLogger.d("Service", "PAKE key agreement complete. Sending pake_resp.")
 
-                // Send PAKE Resp with server public key
-                ws.sendText("{\"type\":\"pake_resp\",\"server_pub\":\"$serverPubHex\"}")
+                // Send PAKE Resp with server public key and host alias
+                ws.sendText("{\"type\":\"pake_resp\",\"server_pub\":\"$serverPubHex\",\"server_alias\":\"Android Device • Host\"}")
 
                 // 2. Await Client Auth Confirmation
                 val authFrame = ws.readFrame()
@@ -195,8 +198,9 @@ class FileShareForegroundService : Service() {
                 AppLogger.i("Service", "PAKE handshake fully confirmed & encrypted!")
 
                 sessionManager.rateLimiter.recordSuccess("guest")
+                connectedPeerAlias.value = clientAlias
                 _serviceState.value = ServiceStatus.PAIRED
-                updateNotification("Guest paired & encrypted • Session active")
+                updateNotification("Guest paired ($clientAlias) • Session active")
 
                 // Hand over WebSocket to Transfer Channel
                 transferChannel?.attachWebSocket(ws, sessionKey)
@@ -219,6 +223,7 @@ class FileShareForegroundService : Service() {
         if (wakeLock?.isHeld == true) {
             wakeLock?.release()
         }
+        connectedPeerAlias.value = null
         _serviceState.value = ServiceStatus.STOPPED
         AppLogger.i("Service", "Server stopped")
     }

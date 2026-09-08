@@ -8,13 +8,34 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import com.anonymous.fileshare.ui.MainScreen
 import com.anonymous.fileshare.ui.TransferStateViewModel
+
+// Hollow Knight inspired dark, luminous aesthetic
+private val HollowKnightColorScheme = darkColorScheme(
+    primary = Color(0xFF38BDF8),        // Soul cyan glow
+    onPrimary = Color(0xFF080B11),
+    primaryContainer = Color(0xFF0284C7),
+    onPrimaryContainer = Color(0xFFE0F2FE),
+    secondary = Color(0xFFF6C453),      // Geo gold
+    onSecondary = Color(0xFF080B11),
+    secondaryContainer = Color(0xFF78590C),
+    onSecondaryContainer = Color(0xFFFEF3C7),
+    background = Color(0xFF080B11),     // Deep Obsidian void
+    onBackground = Color(0xFFF0F6FC),
+    surface = Color(0xFF0D121C),        // Elevated surface
+    onSurface = Color(0xFFF0F6FC),
+    surfaceVariant = Color(0xFF141B29), // Cards & Containers
+    onSurfaceVariant = Color(0xFF94A3B8),
+    outline = Color(0xFF64748B),
+    outlineVariant = Color(0xFF232F44), // Subtle borders
+    error = Color(0xFFEF4444),
+    onError = Color(0xFFFFFFFF)
+)
 
 class MainActivity : ComponentActivity() {
 
@@ -32,9 +53,8 @@ class MainActivity : ComponentActivity() {
         requestRequiredPermissions()
 
         setContent {
-            val darkTheme = isSystemInDarkTheme()
             MaterialTheme(
-                colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme()
+                colorScheme = HollowKnightColorScheme
             ) {
                 MainScreen(viewModel = viewModel)
             }

@@ -45,6 +45,16 @@ class StorageManager(
 
     private var totalSessionBytesReceived: Long = 0L
 
+    @Volatile
+    var customDestinationUri: Uri? = null
+
+    val saveFolderDisplayName: String
+        get() {
+            val uri = customDestinationUri ?: return "Downloads/AnonymousShare"
+            val doc = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, uri)
+            return doc?.name ?: "Custom Folder"
+        }
+
     class ActiveFileSession(
         val transferId: String,
         val originalFilename: String,
@@ -193,8 +203,30 @@ class StorageManager(
         var saved = false
         val mime = getMimeType(displayName)
 
+        // Strategy 0: Custom SAF Target selected by user
+        val targetUri = customDestinationUri
+        if (targetUri != null) {
+            try {
+                val rootDoc = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, targetUri)
+                if (rootDoc != null && rootDoc.canWrite()) {
+                    val targetDoc = rootDoc.createFile(mime, displayName)
+                    if (targetDoc != null) {
+                        context.contentResolver.openOutputStream(targetDoc.uri)?.use { out ->
+                            FileInputStream(sourceFile).use { input ->
+                                input.copyTo(out)
+                            }
+                        }
+                        saved = true
+                        AppLogger.i("StorageManager", "Saved to custom SAF destination (${rootDoc.name}): $displayName")
+                    }
+                }
+            } catch (e: Exception) {
+                AppLogger.w("StorageManager", "Custom SAF destination failed: ${e.message}, falling back to defaults")
+            }
+        }
+
         // Strategy 1: MediaStore API on Android 10+ (Q+) with subfolder
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (!saved && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)

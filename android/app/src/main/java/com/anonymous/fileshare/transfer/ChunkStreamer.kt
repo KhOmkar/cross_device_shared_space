@@ -15,6 +15,11 @@ import kotlinx.coroutines.withContext
 object ChunkStreamer {
 
     private const val DEFAULT_CHUNK_SIZE = 1024 * 1024 // 1 MB
+    private val cancelledTransfers = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    fun cancel(transferId: String) {
+        cancelledTransfers.add(transferId)
+    }
 
     suspend fun streamFile(
         metadata: FileMetadata,
@@ -43,6 +48,12 @@ object ChunkStreamer {
 
             // 2. Stream Binary Encrypted Chunks
             while (bytesSent < metadata.size) {
+                if (cancelledTransfers.contains(metadata.transferId)) {
+                    cancelledTransfers.remove(metadata.transferId)
+                    wsHandler.sendText("{\"type\":\"cancel\",\"transferId\":\"${metadata.transferId}\",\"reason\":\"Cancelled by user\"}")
+                    return@withContext TransferResult.Failure(metadata.transferId, "Cancelled by user")
+                }
+
                 if (wsHandler.isClosed) {
                     return@withContext TransferResult.Failure(metadata.transferId, "Connection closed by peer")
                 }
@@ -85,6 +96,7 @@ object ChunkStreamer {
         } catch (e: Exception) {
             return@withContext TransferResult.Failure(metadata.transferId, e.message ?: "Transfer failed")
         } finally {
+            cancelledTransfers.remove(metadata.transferId)
             CryptoEngine.wipe(buffer)
             try { dataStream.close() } catch (_: Exception) {}
         }

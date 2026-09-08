@@ -44,6 +44,7 @@ class EmbeddedHttpServer(
 
         val ss = ServerSocket()
         ss.reuseAddress = true
+        ss.receiveBufferSize = 256 * 1024
         ss.bind(InetSocketAddress("0.0.0.0", port))
         this.serverSocket = ss
 
@@ -52,6 +53,8 @@ class EmbeddedHttpServer(
                 try {
                     val clientSocket = ss.accept()
                     clientSocket.tcpNoDelay = true
+                    clientSocket.sendBufferSize = 256 * 1024
+                    clientSocket.receiveBufferSize = 256 * 1024
                     executor?.submit {
                         handleClientConnection(clientSocket)
                     }

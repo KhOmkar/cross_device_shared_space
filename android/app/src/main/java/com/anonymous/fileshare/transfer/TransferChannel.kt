@@ -61,6 +61,11 @@ interface TransferChannel {
     )
 
     /**
+     * Cancels a specific transfer by ID.
+     */
+    fun cancelTransfer(transferId: String)
+
+    /**
      * Cancels any active transfer and cleans up associated buffers.
      */
     suspend fun cancel()

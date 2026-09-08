@@ -131,6 +131,8 @@ class WebSocketTransferChannel(
                                     AppLogger.w("WebSocketChannel", "Received cancel frame for $txId")
                                     if (txId.isNotEmpty()) {
                                         storageManager.cancelTransfer(txId)
+                                        ChunkStreamer.cancel(txId)
+                                        onIncomingTransferEvent?.invoke(txId, currentFilename, currentTotalSize, currentReceivedBytes, false, "Cancelled by peer")
                                     }
                                     currentIncomingTransferId = null
                                 }
@@ -173,6 +175,13 @@ class WebSocketTransferChannel(
                 sessionManager.unregisterGuestConnection()
             }
         }
+    }
+
+    override fun cancelTransfer(transferId: String) {
+        AppLogger.i("WebSocketChannel", "Cancelling transfer $transferId")
+        storageManager.cancelTransfer(transferId)
+        ChunkStreamer.cancel(transferId)
+        activeWsHandler?.sendText("{\"type\":\"cancel\",\"transferId\":\"$transferId\",\"reason\":\"Cancelled by phone\"}")
     }
 
     override suspend fun cancel() {
