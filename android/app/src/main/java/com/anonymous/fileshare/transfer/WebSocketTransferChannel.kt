@@ -3,6 +3,7 @@ package com.anonymous.fileshare.transfer
 import com.anonymous.fileshare.crypto.CryptoEngine
 import com.anonymous.fileshare.server.SessionManager
 import com.anonymous.fileshare.server.WebSocketHandler
+import com.anonymous.fileshare.util.AppLogger
 import java.io.InputStream
 import javax.crypto.SecretKey
 import kotlinx.coroutines.CoroutineScope
@@ -32,7 +33,7 @@ class WebSocketTransferChannel(
     fun attachWebSocket(handler: WebSocketHandler, sessionKey: SecretKey) {
         this.activeWsHandler = handler
         this.activeSessionKey = sessionKey
-
+        AppLogger.i("WebSocketChannel", "WebSocket attached with established session key")
         startIncomingMessageLoop(handler, sessionKey)
     }
 
@@ -49,6 +50,7 @@ class WebSocketTransferChannel(
         val ws = activeWsHandler ?: return TransferResult.Failure(metadata.transferId, "Channel not connected")
         val key = activeSessionKey ?: return TransferResult.Failure(metadata.transferId, "Session key not established")
 
+        AppLogger.i("WebSocketChannel", "Starting outgoing sendFile: ${metadata.filename} (${metadata.size} bytes)")
         return ChunkStreamer.streamFile(metadata, dataStream, key, ws, onProgress)
     }
 
@@ -67,6 +69,7 @@ class WebSocketTransferChannel(
             var currentReceivedBytes = 0L
 
             try {
+                AppLogger.d("WebSocketChannel", "Incoming message loop started")
                 while (isActive && !ws.isClosed) {
                     val frame = ws.readFrame() ?: break
                     sessionManager.touch()
@@ -74,7 +77,10 @@ class WebSocketTransferChannel(
                     when (frame) {
                         is WebSocketHandler.Frame.Text -> {
                             val json = JSONObject(frame.message)
-                            when (json.optString("type")) {
+                            val type = json.optString("type")
+                            AppLogger.d("WebSocketChannel", "Received text frame: type=$type")
+
+                            when (type) {
                                 "meta" -> {
                                     val txId = json.getString("transferId")
                                     val filename = json.getString("filename")
@@ -85,10 +91,13 @@ class WebSocketTransferChannel(
                                     currentTotalSize = size
                                     currentReceivedBytes = 0L
 
+                                    AppLogger.i("WebSocketChannel", "Incoming meta: id=$txId, name=$filename, size=$size")
+
                                     try {
                                         storageManager.startIncomingTransfer(txId, filename, size)
                                         onIncomingTransferEvent?.invoke(txId, filename, size, 0L, false, null)
                                     } catch (e: Exception) {
+                                        AppLogger.e("WebSocketChannel", "Failed to init incoming transfer: ${e.message}", e)
                                         ws.sendText("{\"type\":\"ack\",\"transferId\":\"$txId\",\"status\":\"error\",\"message\":\"${e.message}\"}")
                                         onIncomingTransferEvent?.invoke(txId, filename, size, 0L, false, e.message ?: "Init failed")
                                         currentIncomingTransferId = null
@@ -98,11 +107,15 @@ class WebSocketTransferChannel(
                                     val txId = json.getString("transferId")
                                     val checksum = json.getString("checksum")
 
+                                    AppLogger.i("WebSocketChannel", "Incoming done: id=$txId, checksum=$checksum")
+
                                     try {
                                         storageManager.finalizeTransfer(txId, checksum)
+                                        AppLogger.i("WebSocketChannel", "Sending ok ack for $txId")
                                         ws.sendText("{\"type\":\"ack\",\"transferId\":\"$txId\",\"status\":\"ok\",\"verified\":true}")
                                         onIncomingTransferEvent?.invoke(txId, currentFilename, currentTotalSize, currentTotalSize, true, null)
                                     } catch (e: Exception) {
+                                        AppLogger.e("WebSocketChannel", "Verification failed for $txId: ${e.message}", e)
                                         ws.sendText("{\"type\":\"ack\",\"transferId\":\"$txId\",\"status\":\"error\",\"message\":\"${e.message}\"}")
                                         onIncomingTransferEvent?.invoke(txId, currentFilename, currentTotalSize, currentReceivedBytes, false, e.message ?: "Verification failed")
                                     }
@@ -110,6 +123,7 @@ class WebSocketTransferChannel(
                                 }
                                 "cancel" -> {
                                     val txId = json.optString("transferId")
+                                    AppLogger.w("WebSocketChannel", "Received cancel frame for $txId")
                                     if (txId.isNotEmpty()) {
                                         storageManager.cancelTransfer(txId)
                                     }
@@ -120,25 +134,36 @@ class WebSocketTransferChannel(
                         is WebSocketHandler.Frame.Binary -> {
                             // Decrypt AES-256-GCM chunk
                             try {
-                                val (_, plaintext) = CryptoEngine.decryptChunk(key, frame.data)
+                                val (chunkIdx, plaintext) = CryptoEngine.decryptChunk(key, frame.data)
                                 currentIncomingTransferId?.let { txId ->
                                     storageManager.appendChunk(txId, plaintext)
                                     currentReceivedBytes += plaintext.size
+                                    AppLogger.d("WebSocketChannel", "Decrypted chunk #$chunkIdx (${plaintext.size} B, total $currentReceivedBytes/$currentTotalSize)")
                                     onIncomingTransferEvent?.invoke(txId, currentFilename, currentTotalSize, currentReceivedBytes, false, null)
+                                } ?: run {
+                                    AppLogger.w("WebSocketChannel", "Received binary chunk with no active incoming transferId")
                                 }
                             } catch (e: Exception) {
-                                currentIncomingTransferId?.let { storageManager.cancelTransfer(it) }
+                                AppLogger.e("WebSocketChannel", "Chunk decrypt error: ${e.message}", e)
+                                currentIncomingTransferId?.let { txId ->
+                                    storageManager.cancelTransfer(txId)
+                                    ws.sendText("{\"type\":\"ack\",\"transferId\":\"$txId\",\"status\":\"error\",\"message\":\"Decrypt error: ${e.message}\"}")
+                                    onIncomingTransferEvent?.invoke(txId, currentFilename, currentTotalSize, currentReceivedBytes, false, "Decrypt error: ${e.message}")
+                                }
                                 currentIncomingTransferId = null
                             }
                         }
                         is WebSocketHandler.Frame.Close -> {
+                            AppLogger.i("WebSocketChannel", "Client sent Close frame: code=${frame.code}, reason=${frame.reason}")
                             break
                         }
                         else -> {}
                     }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                AppLogger.e("WebSocketChannel", "Loop exception: ${e.message}", e)
             } finally {
+                AppLogger.i("WebSocketChannel", "Incoming message loop terminated")
                 currentIncomingTransferId?.let { storageManager.cancelTransfer(it) }
                 sessionManager.unregisterGuestConnection()
             }

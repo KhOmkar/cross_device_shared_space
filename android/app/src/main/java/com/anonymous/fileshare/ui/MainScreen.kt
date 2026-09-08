@@ -34,6 +34,7 @@ fun MainScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val logs by viewModel.logs.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
 
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -262,6 +263,79 @@ fun MainScreen(
 
                 items(uiState.activeTransfers, key = { it.transferId }) { transfer ->
                     TransferItemRow(transfer)
+                }
+            }
+
+            // Live Debug Logs Section
+            item {
+                var showLogs by remember { mutableStateOf(false) }
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "📋 Live System Logs (${logs.size})",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row {
+                                if (logs.isNotEmpty()) {
+                                    TextButton(onClick = { viewModel.clearLogs() }) {
+                                        Text("Clear")
+                                    }
+                                }
+                                TextButton(onClick = { showLogs = !showLogs }) {
+                                    Text(if (showLogs) "Hide" else "Show")
+                                }
+                            }
+                        }
+
+                        if (showLogs) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            if (logs.isEmpty()) {
+                                Text(
+                                    "No logs recorded yet.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            } else {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
+                                        .padding(8.dp)
+                                        .heightIn(max = 240.dp)
+                                ) {
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxSize(),
+                                        reverseLayout = true
+                                    ) {
+                                        items(logs.reversed()) { logLine ->
+                                            Text(
+                                                logLine,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = when {
+                                                    logLine.contains("ERROR") || logLine.contains("❌") -> Color(0xFFEF4444)
+                                                    logLine.contains("WARN") || logLine.contains("⚠️") -> Color(0xFFF59E0B)
+                                                    logLine.contains("✓") -> Color(0xFF22C55E)
+                                                    else -> Color(0xFF94A3B8)
+                                                },
+                                                modifier = Modifier.padding(vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

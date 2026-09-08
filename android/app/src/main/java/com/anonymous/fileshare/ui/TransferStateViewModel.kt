@@ -58,6 +58,7 @@ class TransferStateViewModel(application: Application) : AndroidViewModel(applic
 
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
+    val logs: StateFlow<List<String>> = com.anonymous.fileshare.util.AppLogger.logs
 
     private val hotspotManager = HotspotManager(application)
     private var boundService: FileShareForegroundService? = null
@@ -180,6 +181,10 @@ class TransferStateViewModel(application: Application) : AndroidViewModel(applic
 
     fun clearTransfers() {
         _uiState.update { it.copy(activeTransfers = emptyList()) }
+    }
+
+    fun clearLogs() {
+        com.anonymous.fileshare.util.AppLogger.clear()
     }
 
     fun openHotspotSettings() {

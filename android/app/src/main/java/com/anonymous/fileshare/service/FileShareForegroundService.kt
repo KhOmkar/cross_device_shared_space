@@ -18,6 +18,7 @@ import com.anonymous.fileshare.server.SessionManager
 import com.anonymous.fileshare.server.WebSocketHandler
 import com.anonymous.fileshare.transfer.StorageManager
 import com.anonymous.fileshare.transfer.WebSocketTransferChannel
+import com.anonymous.fileshare.util.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -76,16 +77,19 @@ class FileShareForegroundService : Service() {
         sessionManager = SessionManager()
         storageManager = StorageManager(applicationContext)
         transferChannel = WebSocketTransferChannel(sessionManager, storageManager, serviceScope)
+        AppLogger.i("Service", "Service created")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP_SERVICE -> {
+                AppLogger.i("Service", "Received ACTION_STOP_SERVICE")
                 stopServer()
                 stopSelf()
                 return START_NOT_STICKY
             }
             ACTION_START_SERVICE -> {
+                AppLogger.i("Service", "Received ACTION_START_SERVICE")
                 startServer()
             }
         }
@@ -98,9 +102,13 @@ class FileShareForegroundService : Service() {
     }
 
     fun startServer(port: Int = 8080) {
-        if (httpServer != null) return
+        if (httpServer != null) {
+            AppLogger.w("Service", "startServer called but server is already running")
+            return
+        }
 
         sessionManager.renewSession()
+        AppLogger.i("Service", "Starting server on port $port, pairingCode=${sessionManager.pairingCode}")
 
         httpServer = EmbeddedHttpServer(
             context = applicationContext,
@@ -113,10 +121,13 @@ class FileShareForegroundService : Service() {
         httpServer?.start()
         _serviceState.value = ServiceStatus.RUNNING
         updateNotification("Server running • Code: ${sessionManager.pairingCode}")
+        AppLogger.i("Service", "HTTP/WS server listening on port $port")
     }
 
     private fun handleIncomingWebSocket(ws: WebSocketHandler, clientToken: String) {
+        AppLogger.i("Service", "Incoming WebSocket connection from guest (token=$clientToken)")
         if (clientToken.isNotEmpty() && !sessionManager.validateToken(clientToken) && clientToken != "manual_pairing") {
+            AppLogger.w("Service", "Invalid session token rejected: $clientToken")
             ws.sendText("{\"type\":\"error\",\"message\":\"Invalid session token\"}")
             ws.close(1008, "Invalid session token")
             return
@@ -126,21 +137,25 @@ class FileShareForegroundService : Service() {
                 // 1. Await PAKE Init frame
                 val initFrame = ws.readFrame()
                 if (initFrame !is WebSocketHandler.Frame.Text) {
+                    AppLogger.w("Service", "Expected PAKE Init text frame, got $initFrame")
                     ws.close(1003, "Expected PAKE Init text frame")
                     return@launch
                 }
 
                 val initJson = JSONObject(initFrame.message)
                 if (initJson.optString("type") != "pake_init") {
+                    AppLogger.w("Service", "Invalid handshake frame type: ${initJson.optString("type")}")
                     ws.close(1003, "Invalid handshake type")
                     return@launch
                 }
 
                 val clientPubHex = initJson.getString("client_pub")
                 val code = initJson.optString("code", "")
+                AppLogger.d("Service", "PAKE Init received: code=$code")
 
                 // Validate Pairing Code
                 if (!sessionManager.validatePairingCode(code)) {
+                    AppLogger.w("Service", "Pairing code validation failed: received=$code, expected=${sessionManager.pairingCode}")
                     sessionManager.rateLimiter.recordFailure("guest")
                     ws.sendText("{\"type\":\"error\",\"message\":\"Invalid pairing code\"}")
                     ws.close(1008, "Invalid pairing code")
@@ -151,6 +166,7 @@ class FileShareForegroundService : Service() {
                 val serverPubHex = sessionManager.pakeExchange.initHandshake()
                 val sessionKey = sessionManager.pakeExchange.completeKeyAgreement(clientPubHex)
                 sessionManager.setDerivedKey(sessionKey)
+                AppLogger.d("Service", "PAKE key agreement complete. Sending pake_resp.")
 
                 // Send PAKE Resp with server public key
                 ws.sendText("{\"type\":\"pake_resp\",\"server_pub\":\"$serverPubHex\"}")
@@ -158,6 +174,7 @@ class FileShareForegroundService : Service() {
                 // 2. Await Client Auth Confirmation
                 val authFrame = ws.readFrame()
                 if (authFrame !is WebSocketHandler.Frame.Text) {
+                    AppLogger.w("Service", "Expected Client Auth text frame, got $authFrame")
                     ws.close(1003, "Expected Client Auth text frame")
                     return@launch
                 }
@@ -165,6 +182,7 @@ class FileShareForegroundService : Service() {
                 val authJson = JSONObject(authFrame.message)
                 val clientAuth = authJson.optString("auth")
                 if (!sessionManager.pakeExchange.verifyClientAuth(clientAuth)) {
+                    AppLogger.w("Service", "Client auth verification failed")
                     sessionManager.rateLimiter.recordFailure("guest")
                     ws.sendText("{\"type\":\"error\",\"message\":\"Authentication verification failed\"}")
                     ws.close(1008, "Auth mismatch")
@@ -174,6 +192,7 @@ class FileShareForegroundService : Service() {
                 // Send PAKE Confirmation
                 val serverAuth = sessionManager.pakeExchange.computeServerAuth()
                 ws.sendText("{\"type\":\"pake_confirmed\",\"server_auth\":\"$serverAuth\"}")
+                AppLogger.i("Service", "PAKE handshake fully confirmed & encrypted!")
 
                 sessionManager.rateLimiter.recordSuccess("guest")
                 _serviceState.value = ServiceStatus.PAIRED
@@ -182,12 +201,14 @@ class FileShareForegroundService : Service() {
                 // Hand over WebSocket to Transfer Channel
                 transferChannel?.attachWebSocket(ws, sessionKey)
             } catch (e: Exception) {
+                AppLogger.e("Service", "Handshake exception: ${e.message}", e)
                 ws.close(1011, "Handshake error: ${e.message}")
             }
         }
     }
 
     fun stopServer() {
+        AppLogger.i("Service", "Stopping server...")
         serviceScope.launch {
             transferChannel?.close()
         }
@@ -199,6 +220,7 @@ class FileShareForegroundService : Service() {
             wakeLock?.release()
         }
         _serviceState.value = ServiceStatus.STOPPED
+        AppLogger.i("Service", "Server stopped")
     }
 
     private fun createNotificationChannel() {

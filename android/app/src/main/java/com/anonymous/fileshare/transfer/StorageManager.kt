@@ -8,6 +8,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import com.anonymous.fileshare.crypto.ChecksumVerifier
 import com.anonymous.fileshare.crypto.CryptoEngine
+import com.anonymous.fileshare.util.AppLogger
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -80,6 +81,8 @@ class StorageManager(
         val sanitized = sanitizeFilename(rawFilename)
         val tempFile = File(tempDir, "temp_${UUID.randomUUID()}.part")
 
+        AppLogger.i("StorageManager", "Starting incoming file: $sanitized ($size bytes) -> temp: ${tempFile.name}")
+
         val outStream = BufferedOutputStream(FileOutputStream(tempFile), 1024 * 1024)
         val session = ActiveFileSession(transferId, sanitized, size, tempFile, outStream)
         activeSessions[transferId] = session
@@ -99,6 +102,7 @@ class StorageManager(
         totalSessionBytesReceived += chunkBytes.size
 
         if (session.bytesWritten > session.expectedSize) {
+            AppLogger.e("StorageManager", "File size exceeded stated metadata size: ${session.bytesWritten} > ${session.expectedSize}")
             cancelTransfer(transferId)
             throw IllegalStateException("File size exceeded stated metadata size")
         }
@@ -129,14 +133,18 @@ class StorageManager(
             session.outStream.close()
 
             val computedChecksum = session.hasher.finalHex()
+            AppLogger.i("StorageManager", "Finalizing ${session.originalFilename}: expected=$expectedChecksum, computed=$computedChecksum")
             if (!computedChecksum.equals(expectedChecksum, ignoreCase = true)) {
+                AppLogger.e("StorageManager", "Checksum mismatch for ${session.originalFilename}!")
                 throw SecurityException("Checksum verification failed! Expected: $expectedChecksum, Computed: $computedChecksum")
             }
 
             // Save to Downloads folder via MediaStore / Storage Access Framework
             saveToDownloads(session.tempFile, session.originalFilename)
+            AppLogger.i("StorageManager", "✓ Successfully saved ${session.originalFilename}")
             return session.tempFile
         } catch (e: Exception) {
+            AppLogger.e("StorageManager", "Failed to finalize ${session.originalFilename}: ${e.message}", e)
             cancelTransfer(transferId)
             throw e
         } finally {
@@ -155,6 +163,7 @@ class StorageManager(
     @Synchronized
     fun cancelTransfer(transferId: String) {
         val session = activeSessions.remove(transferId) ?: return
+        AppLogger.w("StorageManager", "Cancelling transfer $transferId for ${session.originalFilename}")
         try {
             session.memoryBuffer.reset()
             session.outStream.close()
@@ -202,8 +211,11 @@ class StorageManager(
                     values.put(MediaStore.MediaColumns.IS_PENDING, 0)
                     context.contentResolver.update(uri, values, null, null)
                     saved = true
+                    AppLogger.i("StorageManager", "Saved to MediaStore (AnonymousShare subfolder): $displayName")
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                AppLogger.w("StorageManager", "MediaStore Strategy 1 failed: ${e.message}")
+            }
 
             // Strategy 1b: MediaStore API into root Downloads (if subfolder creation is restricted on some OEMs)
             if (!saved) {
@@ -226,8 +238,11 @@ class StorageManager(
                         values.put(MediaStore.MediaColumns.IS_PENDING, 0)
                         context.contentResolver.update(uri, values, null, null)
                         saved = true
+                        AppLogger.i("StorageManager", "Saved to MediaStore (Downloads root): $displayName")
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    AppLogger.w("StorageManager", "MediaStore Strategy 1b failed: ${e.message}")
+                }
             }
         }
 
@@ -240,7 +255,10 @@ class StorageManager(
                 val destFile = File(destDir, displayName)
                 sourceFile.copyTo(destFile, overwrite = true)
                 saved = true
-            } catch (_: Exception) {}
+                AppLogger.i("StorageManager", "Saved to Public Downloads: ${destFile.absolutePath}")
+            } catch (e: Exception) {
+                AppLogger.w("StorageManager", "Public Downloads Strategy 2 failed: ${e.message}")
+            }
         }
 
         // Strategy 3: App-specific external storage (always accessible without permissions)
@@ -251,7 +269,16 @@ class StorageManager(
                 if (!destDir.exists()) destDir.mkdirs()
                 val destFile = File(destDir, displayName)
                 sourceFile.copyTo(destFile, overwrite = true)
-            } catch (_: Exception) {}
+                saved = true
+                AppLogger.i("StorageManager", "Saved to App External Storage: ${destFile.absolutePath}")
+            } catch (e: Exception) {
+                AppLogger.w("StorageManager", "App External Storage Strategy 3 failed: ${e.message}")
+            }
+        }
+
+        if (!saved) {
+            AppLogger.e("StorageManager", "CRITICAL: All storage strategies failed to save $displayName")
+            throw IOException("Failed to save $displayName to device storage")
         }
     }
 
