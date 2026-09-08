@@ -79,9 +79,10 @@ class EmbeddedHttpServer(
         try {
             val inStream = socket.getInputStream()
             val outStream = socket.getOutputStream()
-            val reader = BufferedReader(InputStreamReader(inStream, Charsets.UTF_8))
+            val lines = readHttpHeaderLines(inStream) ?: return
+            if (lines.isEmpty()) return
 
-            val requestLine = reader.readLine() ?: return
+            val requestLine = lines[0]
             val parts = requestLine.split(" ")
             if (parts.size < 2) return
 
@@ -89,10 +90,10 @@ class EmbeddedHttpServer(
             val fullPath = parts[1]
 
             val headers = mutableMapOf<String, String>()
-            var line: String?
-            while (reader.readLine().also { line = it } != null) {
-                if (line!!.isEmpty()) break
-                val headerParts = line!!.split(":", limit = 2)
+            for (i in 1 until lines.size) {
+                val headerLine = lines[i]
+                if (headerLine.isEmpty()) break
+                val headerParts = headerLine.split(":", limit = 2)
                 if (headerParts.size == 2) {
                     headers[headerParts[0].trim().lowercase()] = headerParts[1].trim()
                 }
@@ -220,5 +221,23 @@ class EmbeddedHttpServer(
             map[k] = v
         }
         return map
+    }
+
+    private fun readHttpHeaderLines(inStream: InputStream): List<String>? {
+        val headerBytes = ByteArrayOutputStream()
+        var lastFour = 0
+        while (true) {
+            val b = inStream.read()
+            if (b == -1) return if (headerBytes.size() > 0) String(headerBytes.toByteArray(), Charsets.UTF_8).lines() else null
+            headerBytes.write(b)
+            if (headerBytes.size() > 65536) throw IllegalArgumentException("HTTP headers too large")
+
+            lastFour = (lastFour shl 8) or (b and 0xFF)
+            if ((lastFour and 0xFFFFFFFF.toInt()) == 0x0D0A0D0A || (lastFour and 0xFFFF) == 0x0A0A) {
+                break
+            }
+        }
+        val text = String(headerBytes.toByteArray(), Charsets.UTF_8)
+        return text.lines().map { it.trimEnd('\r') }
     }
 }

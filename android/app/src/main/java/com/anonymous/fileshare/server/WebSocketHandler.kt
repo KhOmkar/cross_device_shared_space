@@ -27,6 +27,9 @@ class WebSocketHandler(
     var isClosed: Boolean = false
         private set
 
+    private var fragmentedOpcode: Int = 0
+    private val fragmentedBuffer = ByteArrayOutputStream()
+
     sealed class Frame {
         data class Text(val message: String) : Frame()
         data class Binary(val data: ByteArray) : Frame()
@@ -37,63 +40,109 @@ class WebSocketHandler(
 
     /**
      * Reads the next incoming WebSocket frame from the client.
-     * Blocks until a frame is received or socket closed.
+     * Reassembles fragmented frames (continuation frames) seamlessly.
+     * Blocks until a full message is received or socket closed.
      */
     fun readFrame(): Frame? {
         if (isClosed || socket.isClosed) return null
 
         try {
-            val b1 = dataIn.readUnsignedByte()
-            val opcode = b1 and 0x0F
+            while (!isClosed && !socket.isClosed) {
+                val b1 = dataIn.readUnsignedByte()
+                val isFin = (b1 and 0x80) != 0
+                val opcode = b1 and 0x0F
 
-            val b2 = dataIn.readUnsignedByte()
-            val isMasked = (b2 and 0x80) != 0
-            var payloadLength = (b2 and 0x7F).toLong()
+                val b2 = dataIn.readUnsignedByte()
+                val isMasked = (b2 and 0x80) != 0
+                var payloadLength = (b2 and 0x7F).toLong()
 
-            if (payloadLength == 126L) {
-                payloadLength = dataIn.readUnsignedShort().toLong()
-            } else if (payloadLength == 127L) {
-                payloadLength = dataIn.readLong()
-            }
+                if (payloadLength == 126L) {
+                    payloadLength = dataIn.readUnsignedShort().toLong()
+                } else if (payloadLength == 127L) {
+                    payloadLength = dataIn.readLong()
+                }
 
-            require(payloadLength >= 0 && payloadLength <= 100 * 1024 * 1024) { "Invalid payload length: $payloadLength" }
+                require(payloadLength >= 0 && payloadLength <= 100 * 1024 * 1024) { "Invalid payload length: $payloadLength" }
 
-            val mask = if (isMasked) {
-                val m = ByteArray(4)
-                dataIn.readFully(m)
-                m
-            } else null
+                val mask = if (isMasked) {
+                    val m = ByteArray(4)
+                    dataIn.readFully(m)
+                    m
+                } else null
 
-            val payload = ByteArray(payloadLength.toInt())
-            dataIn.readFully(payload)
+                val payload = ByteArray(payloadLength.toInt())
+                dataIn.readFully(payload)
 
-            if (isMasked && mask != null) {
-                for (i in payload.indices) {
-                    payload[i] = (payload[i].toInt() xor mask[i % 4].toInt()).toByte()
+                if (isMasked && mask != null) {
+                    for (i in payload.indices) {
+                        payload[i] = (payload[i].toInt() xor mask[i % 4].toInt()).toByte()
+                    }
+                }
+
+                when (opcode) {
+                    0x00 -> {
+                        // Continuation frame
+                        fragmentedBuffer.write(payload)
+                        if (isFin) {
+                            val completeData = fragmentedBuffer.toByteArray()
+                            val originalOpcode = fragmentedOpcode
+                            fragmentedBuffer.reset()
+                            fragmentedOpcode = 0
+
+                            return if (originalOpcode == 0x01) {
+                                Frame.Text(String(completeData, Charsets.UTF_8))
+                            } else {
+                                Frame.Binary(completeData)
+                            }
+                        }
+                    }
+                    0x01, 0x02 -> {
+                        // Text (0x01) or Binary (0x02)
+                        if (isFin) {
+                            fragmentedBuffer.reset()
+                            fragmentedOpcode = 0
+                            return if (opcode == 0x01) {
+                                Frame.Text(String(payload, Charsets.UTF_8))
+                            } else {
+                                Frame.Binary(payload)
+                            }
+                        } else {
+                            // Start of fragmented message
+                            fragmentedOpcode = opcode
+                            fragmentedBuffer.reset()
+                            fragmentedBuffer.write(payload)
+                        }
+                    }
+                    0x08 -> {
+                        // Close frame
+                        isClosed = true
+                        val code = if (payload.size >= 2) ByteBuffer.wrap(payload, 0, 2).short.toInt() else 1000
+                        val reason = if (payload.size > 2) String(payload, 2, payload.size - 2, Charsets.UTF_8) else ""
+                        return Frame.Close(code, reason)
+                    }
+                    0x09 -> {
+                        // Ping -> auto-reply Pong
+                        sendPong(payload)
+                        if (fragmentedOpcode == 0) {
+                            return Frame.Ping
+                        }
+                    }
+                    0x0A -> {
+                        if (fragmentedOpcode == 0) {
+                            return Frame.Pong
+                        }
+                    }
+                    else -> {
+                        AppLogger.w("WebSocketHandler", "Unknown opcode: $opcode, ignoring")
+                    }
                 }
             }
-
-            return when (opcode) {
-                0x01 -> Frame.Text(String(payload, Charsets.UTF_8))
-                0x02 -> Frame.Binary(payload)
-                0x08 -> {
-                    isClosed = true
-                    val code = if (payload.size >= 2) ByteBuffer.wrap(payload, 0, 2).short.toInt() else 1000
-                    val reason = if (payload.size > 2) String(payload, 2, payload.size - 2, Charsets.UTF_8) else ""
-                    Frame.Close(code, reason)
-                }
-                0x09 -> {
-                    // Auto-reply with Pong
-                    sendPong(payload)
-                    Frame.Ping
-                }
-                0x0A -> Frame.Pong
-                else -> null // Ignore or unsupported control frame
-            }
+            return null
         } catch (e: EOFException) {
             isClosed = true
             return null
         } catch (e: Exception) {
+            AppLogger.e("WebSocketHandler", "readFrame socket exception: ${e.message}", e)
             isClosed = true
             return null
         }
