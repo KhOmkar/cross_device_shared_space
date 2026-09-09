@@ -5,7 +5,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.graphics.Bitmap
 import android.net.Uri
 import android.os.IBinder
 import androidx.lifecycle.AndroidViewModel
@@ -55,7 +54,6 @@ data class AppUiState(
     val serverUrl: String = "",
     val shortUrl: String = "http://share.local:8080",
     val ipUrl: String = "",
-    val qrBitmap: Bitmap? = null,
     val activeTransfers: List<TransferItemUiState> = emptyList(),
     val statusMessage: String = "Tap 'Start Server' to begin"
 )
@@ -149,7 +147,6 @@ class TransferStateViewModel(application: Application) : AndroidViewModel(applic
                 val shortUrl = "http://share.local:8080"
                 val shortUrlWithAuth = "http://share.local:8080/?token=$token&code=$code"
                 val ipUrl = "http://$ip:8080"
-                val qr = if (isRunning) QrCodeGenerator.generateQrBitmap(shortUrlWithAuth) else null
 
                 _uiState.update {
                     it.copy(
@@ -160,7 +157,6 @@ class TransferStateViewModel(application: Application) : AndroidViewModel(applic
                         serverUrl = shortUrlWithAuth,
                         shortUrl = shortUrl,
                         ipUrl = ipUrl,
-                        qrBitmap = qr,
                         saveFolderDisplayName = service.storageManager.saveFolderDisplayName,
                         statusMessage = if (isPaired) "Guest Connected & Encrypted" else if (isRunning) "Ready for Guest Connection" else "Server Stopped"
                     )

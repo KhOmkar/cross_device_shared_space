@@ -65,9 +65,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
 
-    // QR Code Generation
-    implementation("com.google.zxing:core:3.5.3")
-
     // Storage Access Framework
     implementation("androidx.documentfile:documentfile:1.0.1")
 
