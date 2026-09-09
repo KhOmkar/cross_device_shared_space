@@ -53,6 +53,8 @@ data class AppUiState(
     val pairingCode: String = "",
     val sessionToken: String = "",
     val serverUrl: String = "",
+    val shortUrl: String = "http://share.local:8080",
+    val ipUrl: String = "",
     val qrBitmap: Bitmap? = null,
     val activeTransfers: List<TransferItemUiState> = emptyList(),
     val statusMessage: String = "Tap 'Start Server' to begin"
@@ -144,8 +146,10 @@ class TransferStateViewModel(application: Application) : AndroidViewModel(applic
                 val ip = hotspotManager.getLocalIpAddress() ?: "192.168.43.1"
                 val code = service.sessionManager.pairingCode
                 val token = service.sessionManager.sessionToken
-                val url = "http://$ip:8080/?token=$token&code=$code"
-                val qr = if (isRunning) QrCodeGenerator.generateQrBitmap(url) else null
+                val shortUrl = "http://share.local:8080"
+                val shortUrlWithAuth = "http://share.local:8080/?token=$token&code=$code"
+                val ipUrl = "http://$ip:8080"
+                val qr = if (isRunning) QrCodeGenerator.generateQrBitmap(shortUrlWithAuth) else null
 
                 _uiState.update {
                     it.copy(
@@ -153,7 +157,9 @@ class TransferStateViewModel(application: Application) : AndroidViewModel(applic
                         isGuestConnected = isPaired,
                         pairingCode = code,
                         sessionToken = token,
-                        serverUrl = url,
+                        serverUrl = shortUrlWithAuth,
+                        shortUrl = shortUrl,
+                        ipUrl = ipUrl,
                         qrBitmap = qr,
                         saveFolderDisplayName = service.storageManager.saveFolderDisplayName,
                         statusMessage = if (isPaired) "Guest Connected & Encrypted" else if (isRunning) "Ready for Guest Connection" else "Server Stopped"
@@ -162,7 +168,7 @@ class TransferStateViewModel(application: Application) : AndroidViewModel(applic
             }
         }
 
-        // Periodically refresh IP address & QR code when hotspot is enabled/changed while server is running
+        // Periodically refresh IP address when hotspot is enabled/changed while server is running
         viewModelScope.launch {
             while (true) {
                 delay(2000)
@@ -170,15 +176,12 @@ class TransferStateViewModel(application: Application) : AndroidViewModel(applic
                 val s = boundService
                 if (state.isServerRunning && !state.isGuestConnected && s != null) {
                     val currentIp = hotspotManager.getLocalIpAddress() ?: "192.168.43.1"
-                    val code = s.sessionManager.pairingCode
-                    val token = s.sessionManager.sessionToken
-                    val expectedUrl = "http://$currentIp:8080/?token=$token&code=$code"
+                    val expectedIpUrl = "http://$currentIp:8080"
 
-                    if (state.serverUrl != expectedUrl) {
+                    if (state.ipUrl != expectedIpUrl) {
                         com.anonymous.fileshare.util.AppLogger.i("ViewModel", "Network IP updated: $currentIp")
-                        val qr = QrCodeGenerator.generateQrBitmap(expectedUrl)
                         _uiState.update {
-                            it.copy(serverUrl = expectedUrl, qrBitmap = qr)
+                            it.copy(ipUrl = expectedIpUrl)
                         }
                     }
                 }

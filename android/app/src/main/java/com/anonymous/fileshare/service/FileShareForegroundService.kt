@@ -12,8 +12,11 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
 import com.anonymous.fileshare.MainActivity
 import com.anonymous.fileshare.server.EmbeddedHttpServer
+import com.anonymous.fileshare.server.MdnsResponder
 import com.anonymous.fileshare.server.SessionManager
 import com.anonymous.fileshare.server.WebSocketHandler
 import com.anonymous.fileshare.transfer.StorageManager
@@ -46,6 +49,11 @@ class FileShareForegroundService : Service() {
     private var httpServer: EmbeddedHttpServer? = null
     var transferChannel: WebSocketTransferChannel? = null
         private set
+
+    private var mdnsResponder: MdnsResponder? = null
+    private var nsdManager: NsdManager? = null
+    private var nsdRegistrationListener: NsdManager.RegistrationListener? = null
+    private val hotspotManager by lazy { HotspotManager(applicationContext) }
 
     private val _serviceState = MutableStateFlow(ServiceStatus.STOPPED)
     val serviceState: StateFlow<ServiceStatus> = _serviceState.asStateFlow()
@@ -121,9 +129,20 @@ class FileShareForegroundService : Service() {
         }
 
         httpServer?.start()
+
+        // Start mDNS Responder & NSD Service Discovery
+        mdnsResponder = MdnsResponder(
+            context = applicationContext,
+            scope = serviceScope,
+            ipProvider = { hotspotManager.getLocalIpAddress() ?: "192.168.43.1" }
+        ).apply {
+            start()
+        }
+        registerNsdService(port)
+
         _serviceState.value = ServiceStatus.RUNNING
         updateNotification("Server running • Code: ${sessionManager.pairingCode}")
-        AppLogger.i("Service", "HTTP/WS server listening on port $port")
+        AppLogger.i("Service", "HTTP/WS server listening on port $port (mDNS share.local active)")
     }
 
     private fun handleIncomingWebSocket(ws: WebSocketHandler, clientToken: String) {
@@ -218,6 +237,20 @@ class FileShareForegroundService : Service() {
         }
         httpServer?.stop()
         httpServer = null
+
+        mdnsResponder?.stop()
+        mdnsResponder = null
+
+        try {
+            nsdRegistrationListener?.let { listener ->
+                nsdManager?.unregisterService(listener)
+            }
+        } catch (e: Exception) {
+            AppLogger.w("Service", "Error unregistering NSD service: ${e.message}")
+        }
+        nsdRegistrationListener = null
+        nsdManager = null
+
         sessionManager.destroy()
         storageManager.clearAll()
         if (wakeLock?.isHeld == true) {
@@ -226,6 +259,34 @@ class FileShareForegroundService : Service() {
         connectedPeerAlias.value = null
         _serviceState.value = ServiceStatus.STOPPED
         AppLogger.i("Service", "Server stopped")
+    }
+
+    private fun registerNsdService(port: Int) {
+        try {
+            nsdManager = getSystemService(Context.NSD_SERVICE) as? NsdManager
+            val serviceInfo = NsdServiceInfo().apply {
+                serviceName = "share"
+                serviceType = "_http._tcp."
+                setPort(port)
+            }
+            nsdRegistrationListener = object : NsdManager.RegistrationListener {
+                override fun onServiceRegistered(serviceInfo: NsdServiceInfo?) {
+                    AppLogger.i("Service", "NSD HTTP service registered: ${serviceInfo?.serviceName}")
+                }
+                override fun onRegistrationFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
+                    AppLogger.w("Service", "NSD registration failed: code $errorCode")
+                }
+                override fun onServiceUnregistered(serviceInfo: NsdServiceInfo?) {
+                    AppLogger.d("Service", "NSD service unregistered")
+                }
+                override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
+                    AppLogger.w("Service", "NSD unregistration failed: code $errorCode")
+                }
+            }
+            nsdManager?.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, nsdRegistrationListener)
+        } catch (e: Exception) {
+            AppLogger.w("Service", "Could not register NSD service: ${e.message}")
+        }
     }
 
     private fun createNotificationChannel() {

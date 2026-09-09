@@ -37,6 +37,7 @@ fun MainScreen(
     val uiState by viewModel.uiState.collectAsState()
     val logs by viewModel.logs.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
@@ -311,24 +312,100 @@ fun MainScreen(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
 
                             Text("Manual Pairing Code", style = MaterialTheme.typography.labelMedium)
                             Text(
                                 uiState.pairingCode,
-                                fontSize = 28.sp,
+                                fontSize = 30.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 fontFamily = FontFamily.Monospace,
                                 color = MaterialTheme.colorScheme.primary,
                                 letterSpacing = 4.sp
                             )
 
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "URL: ${uiState.serverUrl}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // Short URL & Direct IP Addresses
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                "Short URL (No IP needed)",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                uiState.shortUrl,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(uiState.shortUrl))
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.ContentCopy,
+                                                contentDescription = "Copy Short URL",
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                "Direct IP Fallback",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                            Text(
+                                                uiState.ipUrl,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(uiState.ipUrl))
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.ContentCopy,
+                                                contentDescription = "Copy IP URL",
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -383,7 +460,6 @@ fun MainScreen(
             // Live System Logs Section
             item {
                 var showLogs by remember { mutableStateOf(false) }
-                val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
