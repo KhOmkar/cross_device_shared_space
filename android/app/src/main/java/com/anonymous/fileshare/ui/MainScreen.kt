@@ -4,7 +4,11 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,12 +21,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.anonymous.fileshare.service.FileShareForegroundService
+import kotlin.math.cos
+import kotlin.math.sin
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,6 +45,112 @@ fun MainScreen(
     val logs by viewModel.logs.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+
+    var selectedPeer by remember { mutableStateOf<FileShareForegroundService.DiscoveredPeer?>(null) }
+    var showManualFallback by remember { mutableStateOf(false) }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "RadarSweep")
+    val sweepAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "SweepAngle"
+    )
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.9f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "PulseScale"
+    )
+
+    // Incoming Connection Request Modal / Alert Dialog
+    uiState.incomingConnectionRequest?.let { req ->
+        AlertDialog(
+            onDismissRequest = { viewModel.rejectConnection() },
+            icon = {
+                Icon(
+                    Icons.Default.WifiTethering,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
+            title = {
+                Text("Connection Request", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(
+                    "'${req.alias}' (${req.platform}) wants to connect for encrypted file sharing. Allow this session?",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.acceptConnection() },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("Allow")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { viewModel.rejectConnection() }
+                ) {
+                    Text("Deny", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        )
+    }
+
+    // Selected Peer Info Modal
+    selectedPeer?.let { peer ->
+        AlertDialog(
+            onDismissRequest = { selectedPeer = null },
+            icon = {
+                Icon(
+                    when (peer.icon) {
+                        "phone" -> Icons.Default.Smartphone
+                        "laptop" -> Icons.Default.Laptop
+                        else -> Icons.Default.Computer
+                    },
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
+            title = {
+                Text(peer.alias, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Platform: ${peer.platform}", style = MaterialTheme.typography.bodyMedium)
+                    Text("Status: Discovered on Local Network", style = MaterialTheme.typography.bodySmall, color = Color(0xFF10B981))
+                    Text("Tap 'Connect' to request pairing with this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.invitePeer(peer.peerId)
+                        selectedPeer = null
+                    }
+                ) {
+                    Text("Connect")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedPeer = null }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
@@ -263,8 +380,8 @@ fun MainScreen(
                 }
             }
 
-            // Guest Connection & Pairing Box (Visible when server is running)
-            if (uiState.isServerRunning) {
+            // Radar Interface & Connection Box (Visible when server is running and not paired)
+            if (uiState.isServerRunning && !uiState.isGuestConnected) {
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -282,149 +399,313 @@ fun MainScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            "Device Radar",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primary)
+                                        )
+                                    }
                                     Text(
-                                        "Connect Guest Device",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        "Open URL on guest PC/phone connected to hotspot",
+                                        "Scanning hotspot for nearby devices",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                Icon(
-                                    Icons.Default.Wifi,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp)
-                                )
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                ) {
+                                    Text(
+                                        "${uiState.discoveredPeers.size} Detected",
+                                        color = MaterialTheme.colorScheme.primary,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
                             }
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
 
-                            // Pairing Code Section
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                                modifier = Modifier.fillMaxWidth()
+                            // Radar Canvas Container
+                            val primaryColor = MaterialTheme.colorScheme.primary
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(240.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(Color(0xFF090E17)),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            "PAIRING CODE",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(
-                                            uiState.pairingCode,
-                                            fontSize = 28.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontFamily = FontFamily.Monospace,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            letterSpacing = 4.sp
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val center = Offset(size.width / 2f, size.height / 2f)
+                                    val maxRadius = (minOf(size.width, size.height) / 2f) * 0.85f
+
+                                    // Concentric rings
+                                    drawCircle(
+                                        color = primaryColor.copy(alpha = 0.12f),
+                                        radius = maxRadius * 0.35f,
+                                        center = center,
+                                        style = Stroke(width = 1.5f)
+                                    )
+                                    drawCircle(
+                                        color = primaryColor.copy(alpha = 0.18f),
+                                        radius = maxRadius * 0.68f,
+                                        center = center,
+                                        style = Stroke(width = 1.5f)
+                                    )
+                                    drawCircle(
+                                        color = primaryColor.copy(alpha = 0.28f),
+                                        radius = maxRadius,
+                                        center = center,
+                                        style = Stroke(width = 2f)
+                                    )
+
+                                    // Crosshairs
+                                    drawLine(
+                                        color = primaryColor.copy(alpha = 0.15f),
+                                        start = Offset(center.x - maxRadius, center.y),
+                                        end = Offset(center.x + maxRadius, center.y),
+                                        strokeWidth = 1f
+                                    )
+                                    drawLine(
+                                        color = primaryColor.copy(alpha = 0.15f),
+                                        start = Offset(center.x, center.y - maxRadius),
+                                        end = Offset(center.x, center.y + maxRadius),
+                                        strokeWidth = 1f
+                                    )
+
+                                    // Rotating radar sweep
+                                    rotate(degrees = sweepAngle, pivot = center) {
+                                        drawArc(
+                                            brush = Brush.sweepGradient(
+                                                0.0f to Color.Transparent,
+                                                0.75f to Color.Transparent,
+                                                1.0f to primaryColor.copy(alpha = 0.35f),
+                                                center = center
+                                            ),
+                                            startAngle = 0f,
+                                            sweepAngle = 90f,
+                                            useCenter = true,
+                                            topLeft = Offset(center.x - maxRadius, center.y - maxRadius),
+                                            size = androidx.compose.ui.geometry.Size(maxRadius * 2, maxRadius * 2)
                                         )
                                     }
-                                    IconButton(
-                                        onClick = {
-                                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(uiState.pairingCode))
+                                }
+
+                                // Center Host Node (Phone)
+                                Surface(
+                                    shape = CircleShape,
+                                    color = primaryColor.copy(alpha = 0.2f),
+                                    modifier = Modifier.size(44.dp * pulseScale)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = primaryColor,
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Smartphone,
+                                                contentDescription = "Host Phone",
+                                                tint = Color.Black,
+                                                modifier = Modifier.padding(4.dp)
+                                            )
                                         }
+                                    }
+                                }
+
+                                // Render Discovered Peer Nodes on Radar Orbit
+                                uiState.discoveredPeers.forEachIndexed { index, peer ->
+                                    val angleDeg = (index * 90.0) + 45.0
+                                    val angleRad = Math.toRadians(angleDeg)
+                                    val orbitDistance = 65.dp
+
+                                    val xOffset = (cos(angleRad) * orbitDistance.value).dp
+                                    val yOffset = (sin(angleRad) * orbitDistance.value).dp
+
+                                    Box(
+                                        modifier = Modifier
+                                            .offset(x = xOffset, y = yOffset)
+                                            .clickable { selectedPeer = peer },
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(
-                                            Icons.Default.ContentCopy,
-                                            contentDescription = "Copy Pairing Code",
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = Color(0xFF10B981).copy(alpha = 0.25f),
+                                                modifier = Modifier.size(40.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Surface(
+                                                        shape = CircleShape,
+                                                        color = Color(0xFF10B981),
+                                                        modifier = Modifier.size(26.dp)
+                                                    ) {
+                                                        Icon(
+                                                            when (peer.icon) {
+                                                                "phone" -> Icons.Default.Smartphone
+                                                                "laptop" -> Icons.Default.Laptop
+                                                                else -> Icons.Default.Computer
+                                                            },
+                                                            contentDescription = peer.alias,
+                                                            tint = Color.Black,
+                                                            modifier = Modifier.padding(4.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = Color(0xFF0F172A).copy(alpha = 0.9f)
+                                            ) {
+                                                Text(
+                                                    peer.alias.take(16),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color.White,
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
 
-                            // Short URL & Direct IP Addresses
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.fillMaxWidth()
+                            Text(
+                                if (uiState.discoveredPeers.isEmpty())
+                                    "Open http://share.local:8080 on PC/phone to appear on radar"
+                                else
+                                    "Tap any detected device node above to connect",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline,
+                                textAlign = TextAlign.Center
+                            )
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // Expandable Manual Fallback Accordion
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                             ) {
                                 Column(modifier = Modifier.padding(12.dp)) {
                                     Row(
-                                        modifier = Modifier.fillMaxWidth(),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { showManualFallback = !showManualFallback },
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                "Short URL (No IP needed)",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Text(
-                                                uiState.shortUrl,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontFamily = FontFamily.Monospace,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        IconButton(
-                                            onClick = {
-                                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(uiState.shortUrl))
-                                            },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(
-                                                Icons.Default.ContentCopy,
-                                                contentDescription = "Copy Short URL",
-                                                modifier = Modifier.size(16.dp),
-                                                tint = MaterialTheme.colorScheme.primary
+                                                Icons.Default.Pin,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                "Manual Pairing Fallback",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.SemiBold
                                             )
                                         }
+                                        Icon(
+                                            if (showManualFallback) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp)
+                                        )
                                     }
 
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                    Spacer(modifier = Modifier.height(6.dp))
+                                    AnimatedVisibility(visible = showManualFallback) {
+                                        Column(modifier = Modifier.padding(top = 10.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column {
+                                                    Text(
+                                                        "PAIRING CODE",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                    Text(
+                                                        uiState.pairingCode,
+                                                        fontSize = 24.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        letterSpacing = 3.sp
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = {
+                                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(uiState.pairingCode))
+                                                    }
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.ContentCopy,
+                                                        contentDescription = "Copy Pairing Code",
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
 
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                "Direct IP Fallback",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.outline
-                                            )
-                                            Text(
-                                                uiState.ipUrl,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontFamily = FontFamily.Monospace,
-                                                color = MaterialTheme.colorScheme.outline
-                                            )
-                                        }
-                                        IconButton(
-                                            onClick = {
-                                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(uiState.ipUrl))
-                                            },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.ContentCopy,
-                                                contentDescription = "Copy IP URL",
-                                                modifier = Modifier.size(16.dp),
-                                                tint = MaterialTheme.colorScheme.outline
-                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                            Spacer(modifier = Modifier.height(8.dp))
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        "Short URL: ${uiState.shortUrl}",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                    Text(
+                                                        "Direct IP: ${uiState.ipUrl}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        color = MaterialTheme.colorScheme.outline
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = {
+                                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(uiState.shortUrl))
+                                                    },
+                                                    modifier = Modifier.size(28.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.ContentCopy,
+                                                        contentDescription = "Copy Short URL",
+                                                        modifier = Modifier.size(16.dp),
+                                                        tint = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }

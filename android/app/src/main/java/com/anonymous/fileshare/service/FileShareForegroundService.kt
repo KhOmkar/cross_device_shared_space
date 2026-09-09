@@ -29,6 +29,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -40,6 +41,9 @@ class FileShareForegroundService : Service() {
 
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.Main + serviceJob)
+
+    private val _serviceState = MutableStateFlow(ServiceStatus.STOPPED)
+    val serviceState: StateFlow<ServiceStatus> = _serviceState.asStateFlow()
 
     private var wakeLock: PowerManager.WakeLock? = null
     lateinit var sessionManager: SessionManager
@@ -55,10 +59,28 @@ class FileShareForegroundService : Service() {
     private var nsdRegistrationListener: NsdManager.RegistrationListener? = null
     private val hotspotManager by lazy { HotspotManager(applicationContext) }
 
-    private val _serviceState = MutableStateFlow(ServiceStatus.STOPPED)
-    val serviceState: StateFlow<ServiceStatus> = _serviceState.asStateFlow()
-
     val connectedPeerAlias = MutableStateFlow<String?>(null)
+    val discoveredPeers = MutableStateFlow<List<DiscoveredPeer>>(emptyList())
+    val incomingConnectionRequest = MutableStateFlow<ConnectionRequest?>(null)
+
+    private var activeDiscoveryWs: WebSocketHandler? = null
+    private var pendingClientPub: String? = null
+    private var pendingClientAlias: String? = null
+
+    data class DiscoveredPeer(
+        val peerId: String,
+        val alias: String,
+        val platform: String = "desktop",
+        val icon: String = "desktop",
+        val lastSeenMs: Long = System.currentTimeMillis()
+    )
+
+    data class ConnectionRequest(
+        val peerId: String,
+        val alias: String,
+        val platform: String = "desktop",
+        val clientPubHex: String? = null
+    )
 
     enum class ServiceStatus {
         STOPPED,
@@ -147,86 +169,160 @@ class FileShareForegroundService : Service() {
 
     private fun handleIncomingWebSocket(ws: WebSocketHandler, clientToken: String) {
         AppLogger.i("Service", "Incoming WebSocket connection from guest (token=$clientToken)")
-        if (clientToken.isNotEmpty() && !sessionManager.validateToken(clientToken) && clientToken != "manual_pairing") {
+        if (clientToken.isNotEmpty() && !sessionManager.validateToken(clientToken) && clientToken != "manual_pairing" && clientToken != "discovery") {
             AppLogger.w("Service", "Invalid session token rejected: $clientToken")
             ws.sendText("{\"type\":\"error\",\"message\":\"Invalid session token\"}")
             ws.close(1008, "Invalid session token")
             return
         }
+        activeDiscoveryWs = ws
+
         serviceScope.launch(Dispatchers.IO) {
             try {
-                // 1. Await PAKE Init frame
-                val initFrame = ws.readFrame()
-                if (initFrame !is WebSocketHandler.Frame.Text) {
-                    AppLogger.w("Service", "Expected PAKE Init text frame, got $initFrame")
-                    ws.close(1003, "Expected PAKE Init text frame")
-                    return@launch
+                while (serviceState.value != ServiceStatus.STOPPED) {
+                    val frame = ws.readFrame()
+                    if (frame !is WebSocketHandler.Frame.Text) break
+                    val json = JSONObject(frame.message)
+                    val type = json.optString("type")
+
+                    when (type) {
+                        "peer_announce" -> {
+                            val peerId = json.optString("peer_id", "guest_" + (System.currentTimeMillis() % 10000))
+                            val alias = json.optString("device_alias", "Connected Guest")
+                            val platform = json.optString("platform", "desktop")
+                            val icon = json.optString("icon", "desktop")
+
+                            val peer = DiscoveredPeer(peerId, alias, platform, icon)
+                            discoveredPeers.update { list ->
+                                listOf(peer) + list.filter { it.peerId != peerId }
+                            }
+                            AppLogger.d("Service", "Discovered peer announced: $alias ($platform)")
+
+                            // Respond with host announcement
+                            ws.sendText("{\"type\":\"peer_announce\",\"peer_id\":\"host\",\"device_alias\":\"Android Host Phone\",\"platform\":\"phone\",\"icon\":\"phone\"}")
+                        }
+                        "conn_request" -> {
+                            val peerId = json.optString("peer_id", "guest")
+                            val alias = json.optString("device_alias", "Connected Guest")
+                            val platform = json.optString("platform", "desktop")
+                            val clientPubHex = json.optString("client_pub", "")
+                            val code = json.optString("code", "")
+                            AppLogger.i("Service", "Connection request from: $alias ($platform)")
+
+                            if (code.isNotEmpty() && sessionManager.validatePairingCode(code)) {
+                                completePakeHandshake(ws, clientPubHex, alias, code, isApproved = true)
+                                break
+                            } else {
+                                pendingClientPub = clientPubHex
+                                pendingClientAlias = alias
+                                incomingConnectionRequest.value = ConnectionRequest(peerId, alias, platform, clientPubHex)
+                            }
+                        }
+                        "pake_init" -> {
+                            val clientPubHex = json.getString("client_pub")
+                            val code = json.optString("code", "")
+                            val clientAlias = json.optString("device_alias", "Connected Guest")
+                            completePakeHandshake(ws, clientPubHex, clientAlias, code, isApproved = false)
+                            break
+                        }
+                        "conn_rejected" -> {
+                            AppLogger.i("Service", "Connection rejected by peer: ${json.optString("reason")}")
+                        }
+                    }
                 }
-
-                val initJson = JSONObject(initFrame.message)
-                if (initJson.optString("type") != "pake_init") {
-                    AppLogger.w("Service", "Invalid handshake frame type: ${initJson.optString("type")}")
-                    ws.close(1003, "Invalid handshake type")
-                    return@launch
-                }
-
-                val clientPubHex = initJson.getString("client_pub")
-                val code = initJson.optString("code", "")
-                val clientAlias = initJson.optString("device_alias", "Connected Guest")
-                AppLogger.d("Service", "PAKE Init received: code=$code, alias=$clientAlias")
-
-                // Validate Pairing Code
-                if (!sessionManager.validatePairingCode(code)) {
-                    AppLogger.w("Service", "Pairing code validation failed: received=$code, expected=${sessionManager.pairingCode}")
-                    sessionManager.rateLimiter.recordFailure("guest")
-                    ws.sendText("{\"type\":\"error\",\"message\":\"Invalid pairing code\"}")
-                    ws.close(1008, "Invalid pairing code")
-                    return@launch
-                }
-
-                // Initialize Server PAKE Handshake & Derive Master Key
-                val serverPubHex = sessionManager.pakeExchange.initHandshake()
-                val sessionKey = sessionManager.pakeExchange.completeKeyAgreement(clientPubHex)
-                sessionManager.setDerivedKey(sessionKey)
-                AppLogger.d("Service", "PAKE key agreement complete. Sending pake_resp.")
-
-                // Send PAKE Resp with server public key and host alias
-                ws.sendText("{\"type\":\"pake_resp\",\"server_pub\":\"$serverPubHex\",\"server_alias\":\"Android Device • Host\"}")
-
-                // 2. Await Client Auth Confirmation
-                val authFrame = ws.readFrame()
-                if (authFrame !is WebSocketHandler.Frame.Text) {
-                    AppLogger.w("Service", "Expected Client Auth text frame, got $authFrame")
-                    ws.close(1003, "Expected Client Auth text frame")
-                    return@launch
-                }
-
-                val authJson = JSONObject(authFrame.message)
-                val clientAuth = authJson.optString("auth")
-                if (!sessionManager.pakeExchange.verifyClientAuth(clientAuth)) {
-                    AppLogger.w("Service", "Client auth verification failed")
-                    sessionManager.rateLimiter.recordFailure("guest")
-                    ws.sendText("{\"type\":\"error\",\"message\":\"Authentication verification failed\"}")
-                    ws.close(1008, "Auth mismatch")
-                    return@launch
-                }
-
-                // Send PAKE Confirmation
-                val serverAuth = sessionManager.pakeExchange.computeServerAuth()
-                ws.sendText("{\"type\":\"pake_confirmed\",\"server_auth\":\"$serverAuth\"}")
-                AppLogger.i("Service", "PAKE handshake fully confirmed & encrypted!")
-
-                sessionManager.rateLimiter.recordSuccess("guest")
-                connectedPeerAlias.value = clientAlias
-                _serviceState.value = ServiceStatus.PAIRED
-                updateNotification("Guest paired ($clientAlias) • Session active")
-
-                // Hand over WebSocket to Transfer Channel
-                transferChannel?.attachWebSocket(ws, sessionKey)
             } catch (e: Exception) {
-                AppLogger.e("Service", "Handshake exception: ${e.message}", e)
-                ws.close(1011, "Handshake error: ${e.message}")
+                AppLogger.d("Service", "WebSocket handler loop ended: ${e.message}")
             }
+        }
+    }
+
+    private suspend fun completePakeHandshake(
+        ws: WebSocketHandler,
+        clientPubHex: String,
+        clientAlias: String,
+        code: String,
+        isApproved: Boolean
+    ) {
+        try {
+            if (!isApproved && !sessionManager.validatePairingCode(code)) {
+                AppLogger.w("Service", "Pairing code validation failed: received=$code")
+                sessionManager.rateLimiter.recordFailure("guest")
+                ws.sendText("{\"type\":\"error\",\"message\":\"Invalid pairing code\"}")
+                ws.close(1008, "Invalid pairing code")
+                return
+            }
+
+            // Initialize Server PAKE Handshake & Derive Master Key
+            val serverPubHex = sessionManager.pakeExchange.initHandshake()
+            val sessionKey = sessionManager.pakeExchange.completeKeyAgreement(clientPubHex)
+            sessionManager.setDerivedKey(sessionKey)
+            AppLogger.d("Service", "PAKE key agreement complete. Sending pake_resp.")
+
+            // Send PAKE Resp with server public key and host alias
+            ws.sendText("{\"type\":\"pake_resp\",\"server_pub\":\"$serverPubHex\",\"server_alias\":\"Android Host Phone\",\"code\":\"${sessionManager.pairingCode}\"}")
+
+            // Await Client Auth Confirmation
+            val authFrame = ws.readFrame()
+            if (authFrame !is WebSocketHandler.Frame.Text) {
+                AppLogger.w("Service", "Expected Client Auth text frame, got $authFrame")
+                ws.close(1003, "Expected Client Auth text frame")
+                return
+            }
+
+            val authJson = JSONObject(authFrame.message)
+            val clientAuth = authJson.optString("auth")
+            if (!sessionManager.pakeExchange.verifyClientAuth(clientAuth)) {
+                AppLogger.w("Service", "Client auth verification failed")
+                sessionManager.rateLimiter.recordFailure("guest")
+                ws.sendText("{\"type\":\"error\",\"message\":\"Authentication verification failed\"}")
+                ws.close(1008, "Auth mismatch")
+                return
+            }
+
+            // Send PAKE Confirmation
+            val serverAuth = sessionManager.pakeExchange.computeServerAuth()
+            ws.sendText("{\"type\":\"pake_confirmed\",\"server_auth\":\"$serverAuth\"}")
+            AppLogger.i("Service", "PAKE handshake fully confirmed & encrypted!")
+
+            sessionManager.rateLimiter.recordSuccess("guest")
+            connectedPeerAlias.value = clientAlias
+            _serviceState.value = ServiceStatus.PAIRED
+            updateNotification("Guest paired ($clientAlias) • Session active")
+
+            // Hand over WebSocket to Transfer Channel
+            transferChannel?.attachWebSocket(ws, sessionKey)
+        } catch (e: Exception) {
+            AppLogger.e("Service", "Handshake exception: ${e.message}", e)
+            ws.close(1011, "Handshake error: ${e.message}")
+        }
+    }
+
+    fun acceptIncomingConnection() {
+        val ws = activeDiscoveryWs ?: return
+        val clientPub = pendingClientPub ?: return
+        val alias = pendingClientAlias ?: "Connected Guest"
+        incomingConnectionRequest.value = null
+        serviceScope.launch(Dispatchers.IO) {
+            completePakeHandshake(ws, clientPub, alias, sessionManager.pairingCode, isApproved = true)
+        }
+    }
+
+    fun rejectIncomingConnection() {
+        val ws = activeDiscoveryWs
+        incomingConnectionRequest.value = null
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                ws?.sendText("{\"type\":\"conn_rejected\",\"reason\":\"Declined by host\"}")
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun invitePeer(peerId: String) {
+        val ws = activeDiscoveryWs ?: return
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                ws.sendText("{\"type\":\"conn_invite\",\"server_alias\":\"Android Host Phone\",\"code\":\"${sessionManager.pairingCode}\"}")
+            } catch (_: Exception) {}
         }
     }
 
@@ -257,6 +353,11 @@ class FileShareForegroundService : Service() {
             wakeLock?.release()
         }
         connectedPeerAlias.value = null
+        discoveredPeers.value = emptyList()
+        incomingConnectionRequest.value = null
+        activeDiscoveryWs = null
+        pendingClientPub = null
+        pendingClientAlias = null
         _serviceState.value = ServiceStatus.STOPPED
         AppLogger.i("Service", "Server stopped")
     }

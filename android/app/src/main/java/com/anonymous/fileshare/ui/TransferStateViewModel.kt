@@ -54,6 +54,8 @@ data class AppUiState(
     val serverUrl: String = "",
     val shortUrl: String = "http://share.local:8080",
     val ipUrl: String = "",
+    val discoveredPeers: List<FileShareForegroundService.DiscoveredPeer> = emptyList(),
+    val incomingConnectionRequest: FileShareForegroundService.ConnectionRequest? = null,
     val activeTransfers: List<TransferItemUiState> = emptyList(),
     val statusMessage: String = "Tap 'Start Server' to begin"
 )
@@ -189,6 +191,30 @@ class TransferStateViewModel(application: Application) : AndroidViewModel(applic
                 _uiState.update { it.copy(connectedPeerAlias = alias) }
             }
         }
+
+        viewModelScope.launch {
+            service.discoveredPeers.collect { peers ->
+                _uiState.update { it.copy(discoveredPeers = peers) }
+            }
+        }
+
+        viewModelScope.launch {
+            service.incomingConnectionRequest.collect { req ->
+                _uiState.update { it.copy(incomingConnectionRequest = req) }
+            }
+        }
+    }
+
+    fun acceptConnection() {
+        boundService?.acceptIncomingConnection()
+    }
+
+    fun rejectConnection() {
+        boundService?.rejectIncomingConnection()
+    }
+
+    fun invitePeer(peerId: String) {
+        boundService?.invitePeer(peerId)
     }
 
     fun setCustomSaveDirectory(uri: Uri?) {

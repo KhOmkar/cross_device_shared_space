@@ -188,6 +188,146 @@
       gap: 0.75rem;
     }
 
+    /* Radar Discovery Interface */
+    .radar-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 380px;
+      height: 380px;
+      margin: 0.75rem auto 1.25rem auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      user-select: none;
+    }
+
+    .radar-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 50% 50%, #0d1627 0%, #060910 85%);
+      box-shadow: 0 0 35px rgba(0, 0, 0, 0.8), inset 0 0 30px rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+
+    .radar-center-node {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #1a2436 0%, #0a0f1a 100%);
+      border: 2px solid var(--accent-soul);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+      box-shadow: 0 0 16px var(--accent-soul-glow);
+      pointer-events: none;
+    }
+
+    .radar-center-label {
+      position: absolute;
+      bottom: -18px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      text-shadow: 0 1px 4px #000;
+    }
+
+    .peer-blip-node {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #1e2c45 0%, #0c1424 100%);
+      border: 2px solid var(--accent-soul);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      z-index: 20;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s, border-color 0.2s;
+      box-shadow: 0 0 14px var(--accent-soul-glow);
+      animation: blipPulse 2.5s infinite ease-in-out;
+    }
+
+    .peer-blip-node:hover {
+      transform: translate(-50%, -50%) scale(1.15);
+      box-shadow: 0 0 24px rgba(56, 189, 248, 0.7);
+      border-color: #67e8f9;
+    }
+
+    @keyframes blipPulse {
+      0%, 100% { box-shadow: 0 0 14px var(--accent-soul-glow); }
+      50% { box-shadow: 0 0 26px rgba(56, 189, 248, 0.55); }
+    }
+
+    .peer-blip-label {
+      position: absolute;
+      bottom: -18px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--accent-soul);
+      white-space: nowrap;
+      pointer-events: none;
+      text-shadow: 0 1px 4px #000;
+    }
+
+    /* Floating Popover */
+    .peer-popover {
+      position: absolute;
+      z-index: 50;
+      background: rgba(13, 18, 28, 0.96);
+      border: 1px solid var(--accent-soul);
+      border-radius: var(--radius);
+      padding: 1rem;
+      width: 250px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.85), 0 0 24px var(--accent-soul-glow);
+      backdrop-filter: blur(12px);
+      pointer-events: auto;
+      transform: translate(-50%, -125%);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .peer-popover.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -115%);
+    }
+
+    /* Manual Pairing Accordion */
+    details.manual-pairing-accordion {
+      margin-top: 1.25rem;
+      background: rgba(8, 11, 17, 0.5);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem 1rem;
+    }
+
+    details.manual-pairing-accordion summary {
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    details.manual-pairing-accordion summary:hover {
+      color: var(--accent-soul);
+    }
+
     /* Pairing Form */
     .pairing-box {
       display: flex;
@@ -598,21 +738,76 @@
       </div>
     </header>
 
-    <!-- Step 1: Pairing Screen -->
+    <!-- Step 1: Pairing Screen (Radar Discovery + Manual Fallback) -->
     <div id="pairing-section" class="card">
-      <h2 class="card-title">Connect to Phone</h2>
-      <p class="card-desc">Enter the ephemeral pairing code displayed on the phone's screen to establish an end-to-end encrypted session.</p>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h2 class="card-title" style="margin-bottom: 0;">Nearby Device Radar</h2>
+        <span id="radar-status-pill" style="font-size: 0.75rem; color: var(--accent-soul); background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); padding: 0.2rem 0.6rem; border-radius: 9999px; display: flex; align-items: center; gap: 0.35rem;">
+          <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--accent-soul); box-shadow: 0 0 8px var(--accent-soul);"></span>
+          <span>Scanning Hotspot</span>
+        </span>
+      </div>
+      <p class="card-desc" style="margin-bottom: 0.5rem;">Detected devices appear on the radar below. Hover or click on a device node to connect instantly.</p>
 
-      <form id="pairing-form" class="pairing-box">
-        <div class="input-group">
-          <label for="pairing-code">Pairing Code (6 digits / chars)</label>
-          <div class="code-input-wrapper">
-            <input type="text" id="pairing-code" class="code-input" placeholder="123456" maxlength="16" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" required>
-            <button type="submit" id="btn-connect" class="btn">Connect</button>
-          </div>
+      <!-- Radar Canvas & Node Wrapper -->
+      <div class="radar-wrapper" id="radar-wrapper">
+        <canvas id="radar-canvas" class="radar-canvas" width="380" height="380"></canvas>
+        
+        <!-- Center Node: This PC -->
+        <div class="radar-center-node" id="radar-center-node">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-soul);">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          <span class="radar-center-label" id="radar-local-label">This PC</span>
         </div>
-        <div id="pairing-error" class="error-msg hidden"></div>
-      </form>
+
+        <!-- Discovered Peer Nodes Container -->
+        <div id="radar-peers-container"></div>
+
+        <!-- Floating Popover Card for Hovered / Clicked Peer -->
+        <div id="peer-popover" class="peer-popover hidden">
+          <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.6rem;">
+            <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(56, 189, 248, 0.15); border: 1px solid var(--accent-soul); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-soul);">
+                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                <line x1="12" y1="18" x2="12.01" y2="18" stroke-width="2.5"/>
+              </svg>
+            </div>
+            <div style="overflow: hidden;">
+              <div id="popover-alias" style="font-weight: 600; font-size: 0.88rem; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Android Host Phone</div>
+              <div id="popover-platform" style="font-size: 0.72rem; color: var(--text-secondary);">Host • Android Phone</div>
+            </div>
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.35rem;">
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--success); box-shadow: 0 0 6px var(--success);"></span>
+            <span>Available on Local Hotspot</span>
+          </div>
+          <button id="btn-popover-connect" type="button" class="btn" style="width: 100%; padding: 0.55rem; font-size: 0.85rem;">
+            Connect
+          </button>
+        </div>
+      </div>
+
+      <!-- Manual 6-Digit Pairing Fallback Accordion -->
+      <details class="manual-pairing-accordion">
+        <summary>
+          <span>Manual 6-Digit Code Pairing</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted);"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </summary>
+        <form id="pairing-form" class="pairing-box" style="margin-top: 1rem;">
+          <p style="font-size: 0.8rem; color: var(--text-secondary);">Alternatively, enter the 6-digit pairing code shown on the phone screen:</p>
+          <div class="input-group">
+            <label for="pairing-code">Pairing Code (6 digits / chars)</label>
+            <div class="code-input-wrapper">
+              <input type="text" id="pairing-code" class="code-input" placeholder="123456" maxlength="16" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+              <button type="submit" id="btn-connect" class="btn">Connect</button>
+            </div>
+          </div>
+          <div id="pairing-error" class="error-msg hidden"></div>
+        </form>
+      </details>
     </div>
 
     <!-- Step 2: Transfer Dashboard (Shown when connected) -->
@@ -756,6 +951,38 @@
         <div style="margin-top: 1.25rem; display: flex; justify-content: flex-end;">
           <button id="btn-modal-ok" class="btn" style="padding: 0.5rem 1.25rem; font-size: 0.85rem;">
             Got it
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Incoming Connection Request Authorization Modal -->
+    <div id="modal-conn-request" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-soul);">
+              <path d="M12 2L9 8C7 12 7 16 9 19C10.5 21 12 22 12 22C12 22 13.5 21 15 19C17 16 17 12 15 8L12 2Z" fill="rgba(56, 189, 248, 0.18)" stroke="var(--accent-soul)" />
+              <circle cx="12" cy="13" r="2.5" fill="var(--accent-soul)" />
+            </svg>
+            <span>Connection Request</span>
+          </div>
+        </div>
+        <div class="modal-body">
+          <p>
+            <strong id="modal-conn-alias" style="color: var(--accent-soul);">Android Host Phone</strong>
+            wants to connect and share files with this computer.
+          </p>
+          <div class="modal-tip-box" style="border-color: rgba(56, 189, 248, 0.3);">
+            <span style="font-size: 0.8rem; color: var(--text-secondary);">Direct end-to-end encrypted session over local Wi-Fi hotspot.</span>
+          </div>
+        </div>
+        <div style="margin-top: 1.25rem; display: flex; justify-content: flex-end; gap: 0.75rem;">
+          <button id="btn-conn-deny" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem;">
+            Deny
+          </button>
+          <button id="btn-conn-allow" class="btn" style="padding: 0.5rem 1.25rem; font-size: 0.85rem;">
+            Allow & Connect
           </button>
         </div>
       </div>
@@ -1411,8 +1638,30 @@
       const logCountEl = document.getElementById('log-count');
       const btnToggleLogs = document.getElementById('btn-toggle-logs');
       const btnClearLogs = document.getElementById('btn-clear-logs');
+
+      // Radar Elements
+      const radarCanvas = document.getElementById('radar-canvas');
+      const radarPeersContainer = document.getElementById('radar-peers-container');
+      const peerPopover = document.getElementById('peer-popover');
+      const popoverAlias = document.getElementById('popover-alias');
+      const popoverPlatform = document.getElementById('popover-platform');
+      const btnPopoverConnect = document.getElementById('btn-popover-connect');
+      const radarStatusPill = document.getElementById('radar-status-pill');
+      const radarLocalLabel = document.getElementById('radar-local-label');
+
+      // Connection Request Modal Elements
+      const modalConnRequest = document.getElementById('modal-conn-request');
+      const modalConnAlias = document.getElementById('modal-conn-alias');
+      const btnConnDeny = document.getElementById('btn-conn-deny');
+      const btnConnAllow = document.getElementById('btn-conn-allow');
+
       let logCount = 1;
       let customSaveDirHandle = null;
+      let discoveryWs = null;
+      let discoveredPeers = new Map();
+      let pendingInviteCode = null;
+      let activePopoverPeerId = null;
+      const guestPeerId = 'guest_' + Math.random().toString(36).substr(2, 7);
 
       if (localAliasEl) {
         safeSetText(localAliasEl, detectClientAlias());
@@ -2024,8 +2273,435 @@
         }
       }
 
-      // --- Connection & PAKE Handshake ---
+      // --- Radar Animation Canvas Engine ---
+      let radarAnimFrame = null;
+      let radarAngle = 0;
+      let radarRipples = [0.15, 0.55];
+
+      function initRadar() {
+        if (!radarCanvas) return;
+        const ctx = radarCanvas.getContext('2d');
+        if (!ctx) return;
+
+        const width = radarCanvas.width;
+        const height = radarCanvas.height;
+        const cx = width / 2;
+        const cy = height / 2;
+        const maxRadius = 175;
+
+        function renderFrame() {
+          ctx.clearRect(0, 0, width, height);
+
+          // 1. Draw Background Concentric Rings
+          const rings = [45, 90, 135, 175];
+          rings.forEach((r, idx) => {
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.strokeStyle = idx === rings.length - 1 ? 'rgba(56, 189, 248, 0.35)' : 'rgba(56, 189, 248, 0.12)';
+            ctx.lineWidth = idx === rings.length - 1 ? 1.5 : 1;
+            ctx.stroke();
+          });
+
+          // 2. Draw Crosshairs & Diagonals
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(cx - maxRadius, cy);
+          ctx.lineTo(cx + maxRadius, cy);
+          ctx.moveTo(cx, cy - maxRadius);
+          ctx.lineTo(cx, cy + maxRadius);
+          const diagOffset = maxRadius * 0.7071;
+          ctx.moveTo(cx - diagOffset, cy - diagOffset);
+          ctx.lineTo(cx + diagOffset, cy + diagOffset);
+          ctx.moveTo(cx - diagOffset, cy + diagOffset);
+          ctx.lineTo(cx + diagOffset, cy - diagOffset);
+          ctx.stroke();
+
+          // 3. Draw Expanding Ripple Rings
+          radarRipples.forEach((ripple, index) => {
+            const r = ripple * maxRadius;
+            const alpha = Math.max(0, (1 - ripple) * 0.28);
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            radarRipples[index] += 0.005;
+            if (radarRipples[index] > 1) {
+              radarRipples[index] = 0;
+            }
+          });
+
+          // 4. Draw Rotating Sweep Beam (Wedge)
+          radarAngle = (radarAngle + 0.025) % (Math.PI * 2);
+          const sweepWedge = Math.PI * 0.28;
+          const startAngle = radarAngle - sweepWedge;
+          const endAngle = radarAngle;
+
+          const beamGrad = ctx.createRadialGradient(cx, cy, 10, cx, cy, maxRadius);
+          beamGrad.addColorStop(0, 'rgba(56, 189, 248, 0.35)');
+          beamGrad.addColorStop(0.7, 'rgba(56, 189, 248, 0.12)');
+          beamGrad.addColorStop(1, 'rgba(56, 189, 248, 0.01)');
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.arc(cx, cy, maxRadius, startAngle, endAngle);
+          ctx.closePath();
+          ctx.fillStyle = beamGrad;
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + maxRadius * Math.cos(endAngle), cy + maxRadius * Math.sin(endAngle));
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.8)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.restore();
+
+          if (pairingSection && !pairingSection.classList.contains('hidden')) {
+            radarAnimFrame = requestAnimationFrame(renderFrame);
+          }
+        }
+
+        if (radarAnimFrame) cancelAnimationFrame(radarAnimFrame);
+        radarAnimFrame = requestAnimationFrame(renderFrame);
+      }
+
+      // --- Peer Nodes & Popover UI ---
+      let popoverHideTimeout = null;
+
+      function showPeerPopover(peer, x, y) {
+        if (popoverHideTimeout) {
+          clearTimeout(popoverHideTimeout);
+          popoverHideTimeout = null;
+        }
+        activePopoverPeerId = peer.peerId;
+        if (popoverAlias) safeSetText(popoverAlias, peer.alias || 'Android Host Phone');
+        if (popoverPlatform) safeSetText(popoverPlatform, peer.platform === 'phone' ? 'Host • Android Phone' : 'Host • Peer Device');
+        if (btnPopoverConnect) {
+          btnPopoverConnect.disabled = false;
+          safeSetText(btnPopoverConnect, 'Connect');
+        }
+
+        if (peerPopover) {
+          peerPopover.style.left = `${x}px`;
+          peerPopover.style.top = `${y}px`;
+          peerPopover.classList.remove('hidden');
+        }
+      }
+
+      function scheduleHidePeerPopover() {
+        if (popoverHideTimeout) clearTimeout(popoverHideTimeout);
+        popoverHideTimeout = setTimeout(() => {
+          if (peerPopover) peerPopover.classList.add('hidden');
+          activePopoverPeerId = null;
+        }, 350);
+      }
+
+      if (peerPopover) {
+        peerPopover.addEventListener('mouseenter', () => {
+          if (popoverHideTimeout) {
+            clearTimeout(popoverHideTimeout);
+            popoverHideTimeout = null;
+          }
+        });
+        peerPopover.addEventListener('mouseleave', scheduleHidePeerPopover);
+      }
+
+      function addOrUpdatePeer(peerId, alias, platform, icon) {
+        let peer = discoveredPeers.get(peerId);
+        if (peer) {
+          peer.alias = alias;
+          peer.platform = platform;
+          peer.icon = icon;
+          if (peer.labelEl) safeSetText(peer.labelEl, alias);
+          return;
+        }
+
+        const cx = 190;
+        const cy = 190;
+        const radius = 110;
+        const angle = -Math.PI * 0.25;
+        const x = cx + radius * Math.cos(angle);
+        const y = cy + radius * Math.sin(angle);
+
+        const node = document.createElement('div');
+        node.className = 'peer-blip-node';
+        node.id = `peer-node-${peerId}`;
+        node.style.left = `${x}px`;
+        node.style.top = `${y}px`;
+
+        node.innerHTML = `
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-soul); pointer-events: none;">
+            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+            <line x1="12" y1="18" x2="12.01" y2="18" stroke-width="2.5"/>
+          </svg>
+          <span class="peer-blip-label">${alias}</span>
+        `;
+
+        const labelEl = node.querySelector('.peer-blip-label');
+
+        peer = {
+          peerId,
+          alias,
+          platform,
+          icon,
+          x,
+          y,
+          nodeEl: node,
+          labelEl: labelEl
+        };
+
+        node.addEventListener('mouseenter', () => showPeerPopover(peer, x, y));
+        node.addEventListener('mouseleave', scheduleHidePeerPopover);
+        node.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showPeerPopover(peer, x, y);
+        });
+
+        if (radarPeersContainer) {
+          radarPeersContainer.appendChild(node);
+        }
+
+        discoveredPeers.set(peerId, peer);
+      }
+
+      if (btnPopoverConnect) {
+        btnPopoverConnect.addEventListener('click', () => {
+          btnPopoverConnect.disabled = true;
+          safeSetText(btnPopoverConnect, 'Authorizing on phone...');
+
+          sessionState.pendingKeyPair = Crypto.generateKeyPair();
+          const myAlias = detectClientAlias();
+
+          if (discoveryWs && discoveryWs.readyState === WebSocket.OPEN) {
+            AppLog('RADAR', 'Sending connection request to host phone...');
+            discoveryWs.send(JSON.stringify({
+              type: 'conn_request',
+              peer_id: guestPeerId,
+              client_pub: sessionState.pendingKeyPair.pubHex,
+              device_alias: myAlias,
+              platform: 'desktop'
+            }));
+          } else {
+            initDiscoveryWebSocket(() => {
+              discoveryWs.send(JSON.stringify({
+                type: 'conn_request',
+                peer_id: guestPeerId,
+                client_pub: sessionState.pendingKeyPair.pubHex,
+                device_alias: myAlias,
+                platform: 'desktop'
+              }));
+            });
+          }
+        });
+      }
+
+      if (btnConnAllow) {
+        btnConnAllow.addEventListener('click', () => {
+          if (modalConnRequest) modalConnRequest.classList.add('hidden');
+          if (pendingInviteCode) {
+            connect(pendingInviteCode, 'discovery');
+          }
+        });
+      }
+
+      if (btnConnDeny) {
+        btnConnDeny.addEventListener('click', () => {
+          if (modalConnRequest) modalConnRequest.classList.add('hidden');
+          if (discoveryWs && discoveryWs.readyState === WebSocket.OPEN) {
+            discoveryWs.send(JSON.stringify({
+              type: 'conn_rejected',
+              reason: 'Declined by user on computer'
+            }));
+          }
+        });
+      }
+
+      // --- Discovery WebSocket Engine ---
+      function initDiscoveryWebSocket(onOpenCallback) {
+        if (sessionState.ws) return;
+        if (discoveryWs && discoveryWs.readyState === WebSocket.OPEN) {
+          if (onOpenCallback) onOpenCallback();
+          return;
+        }
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const wsUrl = `${protocol}//${host}/transfer?token=discovery`;
+
+        try {
+          const ws = new WebSocket(wsUrl);
+          ws.binaryType = 'arraybuffer';
+
+          ws.onopen = () => {
+            AppLog('RADAR', 'Discovery WebSocket connected. Announcing local PC...');
+            const myAlias = detectClientAlias();
+            ws.send(JSON.stringify({
+              type: 'peer_announce',
+              peer_id: guestPeerId,
+              device_alias: myAlias,
+              platform: 'desktop',
+              icon: 'desktop'
+            }));
+            if (onOpenCallback) onOpenCallback();
+          };
+
+          ws.onmessage = (event) => {
+            if (typeof event.data === 'string') {
+              const msg = JSON.parse(event.data);
+              if (msg.type === 'peer_announce') {
+                AppLog('RADAR', `Discovered peer: ${msg.device_alias} (${msg.platform})`);
+                addOrUpdatePeer(msg.peer_id || 'host', msg.device_alias || 'Android Host Phone', msg.platform || 'phone', msg.icon || 'phone');
+              } else if (msg.type === 'conn_invite') {
+                AppLog('RADAR', `Received connection invite from ${msg.server_alias || 'Host'}`);
+                pendingInviteCode = msg.code;
+                if (modalConnAlias) safeSetText(modalConnAlias, msg.server_alias || 'Android Host Phone');
+                if (modalConnRequest) modalConnRequest.classList.remove('hidden');
+              } else if (msg.type === 'conn_rejected') {
+                AppLog('RADAR', `Connection request was declined by host: ${msg.reason || ''}`, 'warn');
+                if (btnPopoverConnect) {
+                  btnPopoverConnect.disabled = false;
+                  safeSetText(btnPopoverConnect, 'Declined by Phone');
+                  setTimeout(() => {
+                    safeSetText(btnPopoverConnect, 'Connect');
+                  }, 3000);
+                }
+              } else if (msg.type === 'pake_resp') {
+                handlePakeRespOnDiscovery(ws, msg);
+              } else if (msg.type === 'pake_confirmed') {
+                handlePakeConfirmedOnDiscovery(ws, msg);
+              } else if (msg.type === 'ack') {
+                handleAckMessage(msg);
+              } else if (msg.type === 'cancel') {
+                handleCancelMessage(msg);
+              } else if (msg.type === 'meta') {
+                handleIncomingMeta(msg);
+              } else if (msg.type === 'done') {
+                handleIncomingDone(msg);
+              } else if (msg.type === 'error') {
+                AppLog('ERROR', `Server error frame: ${msg.message}`, 'error');
+                showPairingError(msg.message || 'Authentication failed');
+              }
+            } else if (event.data instanceof ArrayBuffer) {
+              handleIncomingChunk(event.data);
+            }
+          };
+
+          ws.onerror = (err) => {
+            AppLog('RADAR', 'Discovery WebSocket error', 'warn');
+          };
+
+          ws.onclose = () => {
+            if (discoveryWs === ws) {
+              discoveryWs = null;
+            }
+            if (!sessionState.ws && pairingSection && !pairingSection.classList.contains('hidden')) {
+              setTimeout(() => initDiscoveryWebSocket(), 3000);
+            }
+          };
+
+          discoveryWs = ws;
+        } catch (e) {
+          console.error('Discovery WebSocket error:', e);
+        }
+      }
+
+      function handlePakeRespOnDiscovery(ws, msg) {
+        if (msg.server_alias && peerAliasEl) {
+          safeSetText(peerAliasEl, msg.server_alias);
+        }
+        AppLog('CRYPTO', 'Received server public key via radar authorization. Deriving AES session key...');
+
+        const code = msg.code || sessionState.pairingCode || 'manual_pairing';
+        const passwordBytes = Crypto.derivePasswordKey(code);
+        const keyPair = sessionState.pendingKeyPair || Crypto.generateKeyPair();
+
+        sessionState.sessionKey = Crypto.deriveSessionKey(
+          keyPair.priv,
+          msg.server_pub,
+          passwordBytes
+        );
+
+        const authHash = Crypto.computeAuthConfirmation(sessionState.sessionKey, 'ClientAuth');
+        ws.send(JSON.stringify({
+          type: 'pake_auth',
+          auth: authHash
+        }));
+      }
+
+      function handlePakeConfirmedOnDiscovery(ws, msg) {
+        const expectedServerAuth = Crypto.computeAuthConfirmation(sessionState.sessionKey, 'ServerAuth');
+        if (msg.server_auth && msg.server_auth.toLowerCase() !== expectedServerAuth.toLowerCase()) {
+          AppLog('CRYPTO', 'Server authentication verification failed!', 'error');
+          showPairingError('Server authentication verification failed');
+          ws.close();
+          return;
+        }
+
+        AppLog('CRYPTO', 'PAKE confirmed! End-to-end encrypted session established.', 'success');
+
+        sessionState.ws = ws;
+        discoveryWs = null;
+        if (peerPopover) peerPopover.classList.add('hidden');
+
+        // Clear previous session transfer history
+        transfersContainer.innerHTML = '';
+        sessionState.activeTransfers.clear();
+        sessionState.activeUploads.clear();
+        uploadQueue.length = 0;
+        isUploading = false;
+
+        statusDot.classList.add('connected');
+        safeSetText(statusText, 'Connected & Encrypted');
+
+        pairingSection.classList.add('hidden');
+        transferSection.classList.remove('hidden');
+      }
+
+      function handleAckMessage(msg) {
+        AppLog('ACK', `Received ACK for ${msg.transferId}: status=${msg.status}${msg.message ? ' (' + msg.message + ')' : ''}`, msg.status === 'ok' ? 'success' : 'error');
+        const upload = sessionState.activeUploads.get(msg.transferId);
+        if (upload) {
+          if (upload.ui) {
+            if (msg.status === 'ok') {
+              completeTransferUI(upload.ui, true, 'Saved & Verified on Phone');
+            } else {
+              completeTransferUI(upload.ui, false, 'Phone error: ' + (msg.message || 'Verification failed'));
+            }
+          }
+          sessionState.activeUploads.delete(msg.transferId);
+          if (typeof upload.resolve === 'function') {
+            upload.resolve();
+          }
+        }
+      }
+
+      function handleCancelMessage(msg) {
+        AppLog('TRANSFER', `Peer cancelled transfer: ${msg.transferId}`);
+        const tx = sessionState.activeTransfers.get(msg.transferId);
+        if (tx && tx.ui) {
+          completeTransferUI(tx.ui, false, 'Cancelled by Phone');
+          sessionState.activeTransfers.delete(msg.transferId);
+        }
+        const up = sessionState.activeUploads.get(msg.transferId);
+        if (up) {
+          if (up.item) up.item.isCancelled = true;
+          if (up.ui) completeTransferUI(up.ui, false, 'Cancelled by Phone');
+          sessionState.activeUploads.delete(msg.transferId);
+          if (typeof up.resolve === 'function') up.resolve();
+        }
+      }
+
+      // --- Manual Connection & PAKE Handshake ---
       function connect(pairingCode, tokenParam) {
+        if (discoveryWs) {
+          try { discoveryWs.close(); } catch (_) {}
+          discoveryWs = null;
+        }
+
         pairingError.classList.add('hidden');
         btnConnect.disabled = true;
         safeSetText(btnConnect, 'Connecting...');
@@ -2038,7 +2714,6 @@
         AppLog('WS', `Connecting to ${wsUrl} with code: ${pairingCode}`);
 
         try {
-          // 1. Generate PAKE Ephemeral Keys
           const passwordBytes = Crypto.derivePasswordKey(pairingCode);
           const keyPair = Crypto.generateKeyPair();
           const myAlias = detectClientAlias();
@@ -2051,7 +2726,6 @@
             safeSetText(statusText, 'Authenticating...');
             statusDot.className = 'status-dot';
 
-            // Send PAKE Init with client device alias
             ws.send(JSON.stringify({
               type: 'pake_init',
               client_pub: keyPair.pubHex,
@@ -2076,7 +2750,6 @@
                 );
 
                 const authHash = Crypto.computeAuthConfirmation(sessionState.sessionKey, 'ClientAuth');
-
                 ws.send(JSON.stringify({
                   type: 'pake_auth',
                   auth: authHash
@@ -2096,7 +2769,6 @@
                 sessionState.pairingCode = pairingCode;
                 sessionState.token = token;
 
-                // Clear previous session transfer history
                 transfersContainer.innerHTML = '';
                 sessionState.activeTransfers.clear();
                 sessionState.activeUploads.clear();
@@ -2109,35 +2781,9 @@
                 pairingSection.classList.add('hidden');
                 transferSection.classList.remove('hidden');
               } else if (msg.type === 'ack') {
-                AppLog('ACK', `Received ACK for ${msg.transferId}: status=${msg.status}${msg.message ? ' (' + msg.message + ')' : ''}`, msg.status === 'ok' ? 'success' : 'error');
-                const upload = sessionState.activeUploads.get(msg.transferId);
-                if (upload) {
-                  if (upload.ui) {
-                    if (msg.status === 'ok') {
-                      completeTransferUI(upload.ui, true, 'Saved & Verified on Phone');
-                    } else {
-                      completeTransferUI(upload.ui, false, 'Phone error: ' + (msg.message || 'Verification failed'));
-                    }
-                  }
-                  sessionState.activeUploads.delete(msg.transferId);
-                  if (typeof upload.resolve === 'function') {
-                    upload.resolve();
-                  }
-                }
+                handleAckMessage(msg);
               } else if (msg.type === 'cancel') {
-                AppLog('TRANSFER', `Peer cancelled transfer: ${msg.transferId}`);
-                const tx = sessionState.activeTransfers.get(msg.transferId);
-                if (tx && tx.ui) {
-                  completeTransferUI(tx.ui, false, 'Cancelled by Phone');
-                  sessionState.activeTransfers.delete(msg.transferId);
-                }
-                const up = sessionState.activeUploads.get(msg.transferId);
-                if (up) {
-                  if (up.item) up.item.isCancelled = true;
-                  if (up.ui) completeTransferUI(up.ui, false, 'Cancelled by Phone');
-                  sessionState.activeUploads.delete(msg.transferId);
-                  if (typeof up.resolve === 'function') up.resolve();
-                }
+                handleCancelMessage(msg);
               } else if (msg.type === 'meta') {
                 handleIncomingMeta(msg);
               } else if (msg.type === 'done') {
@@ -2189,7 +2835,6 @@
           sessionState.ws = null;
         }
 
-        // Immediately update all in-flight outgoing transfers
         for (const upload of sessionState.activeUploads.values()) {
           if (upload.ui) {
             completeTransferUI(upload.ui, false, 'Server Disconnected');
@@ -2199,7 +2844,6 @@
           }
         }
 
-        // Immediately update all in-flight incoming transfers
         for (const transfer of sessionState.activeTransfers.values()) {
           if (transfer.ui) {
             completeTransferUI(transfer.ui, false, 'Server Disconnected');
@@ -2218,6 +2862,9 @@
         pairingSection.classList.remove('hidden');
         btnConnect.disabled = false;
         safeSetText(btnConnect, 'Connect');
+
+        initRadar();
+        initDiscoveryWebSocket();
       }
 
       // --- UI Event Handlers ---
@@ -2338,11 +2985,14 @@
         }
       });
 
-      // Auto-fill from URL Query Params
+      // Auto-fill from URL Query Params & Start Radar
       window.addEventListener('DOMContentLoaded', () => {
         const params = new URLSearchParams(window.location.search);
         const tokenParam = params.get('token');
         const codeParam = params.get('code');
+
+        initRadar();
+        addOrUpdatePeer('host', 'Android Host Phone', 'phone', 'phone');
 
         if (tokenParam) {
           sessionState.token = tokenParam;
@@ -2350,6 +3000,8 @@
         if (codeParam) {
           pairingCodeInput.value = codeParam;
           connect(codeParam, tokenParam);
+        } else {
+          initDiscoveryWebSocket();
         }
       });
     })();
