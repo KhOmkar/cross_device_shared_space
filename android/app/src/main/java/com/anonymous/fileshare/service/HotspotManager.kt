@@ -98,22 +98,68 @@ class HotspotManager(private val context: Context) {
     }
 
     /**
-     * Discovers active local IPv4 address across network interfaces (wlan0, ap0, swlan0, etc.).
+     * Discovers active local IPv4 address across network interfaces, prioritizing hotspot/AP
+     * and local Wi-Fi while strictly ignoring cellular (mobile data) interfaces.
      */
     fun getLocalIpAddress(): String? {
         try {
             val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            val candidateList = mutableListOf<Pair<String, String>>() // (interfaceName, ip)
+
             for (intf in interfaces) {
                 if (intf.isLoopback || !intf.isUp) continue
+                val name = intf.name.lowercase()
+
+                // Exclude cellular data and virtual tunnel/dummy interfaces
+                if (name.contains("rmnet") || name.contains("ccmni") || name.contains("pdp") ||
+                    name.contains("tun") || name.contains("ppp") || name.contains("dummy") ||
+                    name.startsWith("v4-") || name.startsWith("set-") || name.startsWith("epdg")) {
+                    continue
+                }
+
                 val addrs = Collections.list(intf.inetAddresses)
                 for (addr in addrs) {
                     if (!addr.isLoopbackAddress && addr is Inet4Address) {
                         val host = addr.hostAddress
-                        if (host != null && (host.startsWith("192.168.") || host.startsWith("10.") || host.startsWith("172."))) {
-                            return host
+                        if (host != null && !host.startsWith("127.")) {
+                            candidateList.add(Pair(name, host))
                         }
                     }
                 }
+            }
+
+            // 1. Exact default Android SoftAP address (192.168.43.1)
+            val exactDefault = candidateList.find { it.second == "192.168.43.1" }
+            if (exactDefault != null) return exactDefault.second
+
+            // 2. Dedicated Hotspot/AP interfaces (ap0, ap1, swlan0, softap, etc.)
+            val apCandidate = candidateList.find {
+                it.first.startsWith("ap") || it.first.startsWith("swlan") || it.first.contains("softap")
+            }
+            if (apCandidate != null) return apCandidate.second
+
+            // 3. Wi-Fi interfaces (wlan0, wlan1) with standard 192.168.*.*
+            val wlan192 = candidateList.find {
+                it.first.startsWith("wlan") && it.second.startsWith("192.168.")
+            }
+            if (wlan192 != null) return wlan192.second
+
+            // 4. Any wlan interface
+            val wlanAny = candidateList.find { it.first.startsWith("wlan") }
+            if (wlanAny != null) return wlanAny.second
+
+            // 5. USB tethering (rndis)
+            val rndis = candidateList.find { it.first.startsWith("rndis") }
+            if (rndis != null) return rndis.second
+
+            // 6. Any other non-cellular interface with private IP
+            val privateCandidate = candidateList.find {
+                it.second.startsWith("192.168.") || it.second.startsWith("10.") || it.second.startsWith("172.")
+            }
+            if (privateCandidate != null) return privateCandidate.second
+
+            if (candidateList.isNotEmpty()) {
+                return candidateList.first().second
             }
         } catch (_: Exception) {}
         return "192.168.43.1" // Standard default Android SoftAP IP

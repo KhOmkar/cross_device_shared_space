@@ -16,6 +16,7 @@ import com.anonymous.fileshare.transfer.FileMetadata
 import com.anonymous.fileshare.transfer.TransferDirection
 import com.anonymous.fileshare.transfer.TransferResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -157,6 +158,29 @@ class TransferStateViewModel(application: Application) : AndroidViewModel(applic
                         saveFolderDisplayName = service.storageManager.saveFolderDisplayName,
                         statusMessage = if (isPaired) "Guest Connected & Encrypted" else if (isRunning) "Ready for Guest Connection" else "Server Stopped"
                     )
+                }
+            }
+        }
+
+        // Periodically refresh IP address & QR code when hotspot is enabled/changed while server is running
+        viewModelScope.launch {
+            while (true) {
+                delay(2000)
+                val state = _uiState.value
+                val s = boundService
+                if (state.isServerRunning && !state.isGuestConnected && s != null) {
+                    val currentIp = hotspotManager.getLocalIpAddress() ?: "192.168.43.1"
+                    val code = s.sessionManager.pairingCode
+                    val token = s.sessionManager.sessionToken
+                    val expectedUrl = "http://$currentIp:8080/?token=$token&code=$code"
+
+                    if (state.serverUrl != expectedUrl) {
+                        com.anonymous.fileshare.util.AppLogger.i("ViewModel", "Network IP updated: $currentIp")
+                        val qr = QrCodeGenerator.generateQrBitmap(expectedUrl)
+                        _uiState.update {
+                            it.copy(serverUrl = expectedUrl, qrBitmap = qr)
+                        }
+                    }
                 }
             }
         }
